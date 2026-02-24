@@ -1,1 +1,1 @@
-export { Base64 } from '@rocket.chat/base64';
+export * as Base64 from './base64.core.ts';

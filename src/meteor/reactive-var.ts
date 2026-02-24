@@ -1,5 +1,5 @@
 // Assuming Tracker is provided by your modern reactive environment or a local implementation
-import * as Tracker from './tracker';
+import { Tracker } from './tracker';
 
 export type EqualsFunction<T> = (oldValue: T, newValue: T) => boolean;
 

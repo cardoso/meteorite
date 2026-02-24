@@ -1,238 +1,214 @@
-import { EJSON } from './ejson.ts';
-import { ObjectID } from './mongo-id.ts';
+// Assuming Tracker and EJSON are provided by your modern environment
 import { Tracker } from './tracker.ts';
+import { EJSON } from './ejson.ts';
 
-type DictValue = any;
+const hasOwn = Object.prototype.hasOwnProperty;
 
-export class ReactiveDict {
-	static _dictsToMigrate: Record<string, ReactiveDict> = {};
+function stringify(value: unknown): string {
+  if (value === undefined) {
+    return 'undefined';
+  }
+  return EJSON.stringify(value);
+}
 
-	private name: string | undefined;
+function parse(serialized: string): any {
+  if (serialized === undefined || serialized === 'undefined') {
+    return undefined;
+  }
+  return EJSON.parse(serialized);
+}
 
-	private _map = new Map<string, DictValue>();
+function changed(dep?: Tracker.Dependency): void {
+  if (dep) {
+    dep.changed();
+  }
+}
 
-	private _allDep = new Tracker.Dependency();
+export class ReactiveDict<O extends Record<string, any> = Record<string, any>> {
+  public name?: string;
+  private keys: Record<string, string> = {};
+  private allDeps: Tracker.Dependency;
+  private keyDeps: Record<string, Tracker.Dependency> = {};
+  private keyValueDeps: Record<string, Record<string, Tracker.Dependency>> = {};
 
-	private _keyDeps = new Map<string, Tracker.Dependency>();
+  constructor(dictNameOrData?: string | Partial<O>, dictData?: Partial<O>) {
+    this.allDeps = new Tracker.Dependency();
 
-	private _keyValueDeps = new Map<string, Map<string, Tracker.Dependency>>();
+    // The fix: properly handling falsy first arguments (like undefined)
+    if (dictNameOrData) {
+      if (typeof dictNameOrData === 'string') {
+        this.name = dictNameOrData;
+        if (dictData) {
+          this._setObject(dictData);
+        }
+      } else if (typeof dictNameOrData === 'object') {
+        this._setObject(dictNameOrData as Partial<O>);
+      } else {
+        throw new Error(`Invalid ReactiveDict argument: ${String(dictNameOrData)}`);
+      }
+    } else if (typeof dictData === 'object' && dictData !== null) {
+      // If dictNameOrData is undefined, we still need to set the dictData
+      this._setObject(dictData);
+    }
+  }
 
-	constructor(dictName?: string | object, dictData?: object) {
-		let initialData: Record<string, any> = {};
+  set<P extends keyof O>(key: P, value?: O[P]): void;
+  set(object: Partial<O>): void;
+  set(keyOrObject: keyof O | Partial<O>, value?: any): void {
+    if (typeof keyOrObject === 'object' && keyOrObject !== null && value === undefined) {
+      this._setObject(keyOrObject as Partial<O>);
+      return;
+    }
 
-		if (dictName) {
-			if (typeof dictName === 'string') {
-				this.name = dictName;
-				ReactiveDict._registerDictForMigrate(dictName, this);
-				const migratedData = ReactiveDict._loadMigratedDict(dictName);
+    const key = keyOrObject as string;
+    const serializedValue = stringify(value);
+    
+    const keyExisted = hasOwn.call(this.keys, key);
+    const oldSerializedValue = keyExisted ? this.keys[key] : 'undefined';
+    const isNewValue = serializedValue !== oldSerializedValue;
 
-				if (migratedData) {
-					for (const key of Object.keys(migratedData)) {
-						try {
-							const val = migratedData[key];
-							const parsed = val === 'undefined' ? undefined : EJSON.parse(val);
-							this._map.set(key, parsed);
-						} catch (e) {
-							console.error(`ReactiveDict: Failed to migrate key "${key}"`, e);
-						}
-					}
-					return;
-				}
-				initialData = (dictData || {}) as Record<string, any>;
-			} else if (typeof dictName === 'object') {
-				initialData = dictName as Record<string, any>;
-			} else {
-				throw new Error(`Invalid ReactiveDict argument: ${dictName}`);
-			}
-		} else if (typeof dictData === 'object') {
-			initialData = dictData as Record<string, any>;
-		}
-		if (initialData) {
-			for (const key of Object.keys(initialData)) {
-				this._map.set(key, initialData[key]);
-			}
-		}
-	}
+    this.keys[key] = serializedValue;
 
-	set(keyOrObject: string | object, value?: any): void {
-		if (typeof keyOrObject === 'object' && value === undefined) {
-			this._setObject(keyOrObject);
-			return;
-		}
+    if (isNewValue || !keyExisted) {
+      changed(this.allDeps);
+    }
 
-		const key = keyOrObject as string;
-		const oldValue = this._map.get(key);
-		if (this._map.has(key) && EJSON.equals(oldValue, value)) {
-			return;
-		}
+    if (isNewValue && this.keyDeps) {
+      changed(this.keyDeps[key]);
+      if (this.keyValueDeps[key]) {
+        changed(this.keyValueDeps[key][oldSerializedValue]);
+        changed(this.keyValueDeps[key][serializedValue]);
+      }
+    }
+  }
 
-		this._map.set(key, value);
-		this._allDep.changed();
-		this._keyDeps.get(key)?.changed();
-		const valDeps = this._keyValueDeps.get(key);
-		if (valDeps) {
-			if (oldValue !== undefined) {
-				const oldStr = EJSON.stringify(oldValue);
-				valDeps.get(oldStr)?.changed();
-			} else {
-				valDeps.get('undefined')?.changed();
-			}
-			if (value !== undefined) {
-				const newStr = EJSON.stringify(value);
-				valDeps.get(newStr)?.changed();
-			} else {
-				valDeps.get('undefined')?.changed();
-			}
-		}
-	}
+  setDefault<P extends keyof O>(key: P, value?: O[P]): void;
+  setDefault(object: Partial<O>): void;
+  setDefault(keyOrObject: keyof O | Partial<O>, value?: any): void {
+    if (typeof keyOrObject === 'object' && keyOrObject !== null && value === undefined) {
+      this._setDefaultObject(keyOrObject as Partial<O>);
+      return;
+    }
 
-	setDefault(keyOrObject: string | object, value?: any): void {
-		if (typeof keyOrObject === 'object' && value === undefined) {
-			const obj = keyOrObject as Record<string, any>;
-			for (const key of Object.keys(obj)) {
-				this.setDefault(key, obj[key]);
-			}
-			return;
-		}
+    const key = keyOrObject as string;
+    if (!hasOwn.call(this.keys, key)) {
+      this.set(key, value);
+    }
+  }
 
-		const key = keyOrObject as string;
-		if (!this._map.has(key)) {
-			this.set(key, value);
-		}
-	}
+  get<P extends keyof O>(key: P): O[P] | undefined {
+    const keyStr = key as string;
+    this._ensureKey(keyStr);
+    this.keyDeps[keyStr].depend();
+    return parse(this.keys[keyStr]);
+  }
 
-	get(key: string): any {
-		this._ensureKeyDep(key).depend();
+  equals<P extends keyof O>(
+    key: P,
+    value: string | number | boolean | undefined | null | Date
+  ): boolean {
+    if (
+      typeof value !== 'string' &&
+      typeof value !== 'number' &&
+      typeof value !== 'boolean' &&
+      typeof value !== 'undefined' &&
+      !(value instanceof Date) &&
+      value !== null
+    ) {
+      throw new Error('ReactiveDict.equals: value must be scalar');
+    }
 
-		const val = this._map.get(key);
-		return val === undefined ? undefined : EJSON.clone(val);
-	}
+    const keyStr = key as string;
+    const serializedValue = stringify(value);
 
-	equals(key: string, value: string | number | boolean | null | undefined | Date | ObjectID): boolean {
-		if (
-			typeof value !== 'string' &&
-			typeof value !== 'number' &&
-			typeof value !== 'boolean' &&
-			typeof value !== 'undefined' &&
-			!(value instanceof Date) &&
-			!(value instanceof ObjectID) &&
-			value !== null
-		) {
-			throw new Error('ReactiveDict.equals: value must be scalar');
-		}
+    if (Tracker.active) {
+      this._ensureKey(keyStr);
 
-		if (Tracker.active) {
-			const serializedValue = value === undefined ? 'undefined' : EJSON.stringify(value);
-			let valDeps = this._keyValueDeps.get(key);
-			if (!valDeps) {
-				valDeps = new Map();
-				this._keyValueDeps.set(key, valDeps);
-			}
-			let dep = valDeps.get(serializedValue);
-			if (!dep) {
-				dep = new Tracker.Dependency();
-				valDeps.set(serializedValue, dep);
-			}
+      if (!hasOwn.call(this.keyValueDeps[keyStr], serializedValue)) {
+        this.keyValueDeps[keyStr][serializedValue] = new Tracker.Dependency();
+      }
 
-			const isNew = dep.depend();
-			if (isNew) {
-				Tracker.onInvalidate(() => {
-					if (!dep.hasDependents()) {
-						valDeps.delete(serializedValue);
-						if (valDeps.size === 0) {
-							this._keyValueDeps.delete(key);
-						}
-					}
-				});
-			}
-		}
+      const isNew = this.keyValueDeps[keyStr][serializedValue].depend();
+      if (isNew) {
+        Tracker.onInvalidate(() => {
+          if (!this.keyValueDeps[keyStr][serializedValue].hasDependents()) {
+            delete this.keyValueDeps[keyStr][serializedValue];
+          }
+        });
+      }
+    }
 
-		const currentValue = this._map.get(key);
-		return EJSON.equals(currentValue, value);
-	}
+    let oldValue: any = undefined;
+    if (hasOwn.call(this.keys, keyStr)) {
+      oldValue = parse(this.keys[keyStr]);
+    }
+    return EJSON.equals(oldValue, value);
+  }
 
-	all(): Record<string, any> {
-		this._allDep.depend();
-		const ret: Record<string, any> = {};
-		for (const [key, val] of this._map.entries()) {
-			ret[key] = EJSON.clone(val);
-		}
-		return ret;
-	}
+  all(): Partial<O> {
+    this.allDeps.depend();
+    const ret: Partial<O> = {};
+    for (const key of Object.keys(this.keys)) {
+      ret[key as keyof O] = parse(this.keys[key]);
+    }
+    return ret;
+  }
 
-	clear(): void {
-		const oldKeys = Array.from(this._map.keys());
-		this._map.clear();
+  clear(): void {
+    const oldKeys = this.keys;
+    this.keys = {};
 
-		this._allDep.changed();
+    this.allDeps.changed();
 
-		for (const key of oldKeys) {
-			this._keyDeps.get(key)?.changed();
-			const valDeps = this._keyValueDeps.get(key);
-			if (valDeps) {
-				for (const dep of valDeps.values()) {
-					dep.changed();
-				}
-				valDeps.clear(); // Safe to clear since we deleted the key
-			}
-		}
-	}
+    for (const key of Object.keys(oldKeys)) {
+      changed(this.keyDeps[key]);
+      if (this.keyValueDeps[key]) {
+        changed(this.keyValueDeps[key][oldKeys[key]]);
+        changed(this.keyValueDeps[key]['undefined']);
+      }
+    }
+  }
 
-	delete(key: string): boolean {
-		if (!this._map.has(key)) return false;
+  delete<P extends keyof O>(key: P): boolean {
+    const keyStr = key as string;
+    let didRemove = false;
 
-		const oldValue = this._map.get(key);
-		this._map.delete(key);
+    if (hasOwn.call(this.keys, keyStr)) {
+      const oldValue = this.keys[keyStr];
+      delete this.keys[keyStr];
+      changed(this.keyDeps[keyStr]);
+      
+      if (this.keyValueDeps[keyStr]) {
+        changed(this.keyValueDeps[keyStr][oldValue]);
+        changed(this.keyValueDeps[keyStr]['undefined']);
+      }
+      
+      this.allDeps.changed();
+      didRemove = true;
+    }
+    return didRemove;
+  }
 
-		this._allDep.changed();
-		this._keyDeps.get(key)?.changed();
+  destroy(): void {
+    this.clear();
+  }
 
-		const valDeps = this._keyValueDeps.get(key);
-		if (valDeps) {
-			if (oldValue !== undefined) {
-				valDeps.get(EJSON.stringify(oldValue))?.changed();
-			}
-			valDeps.get('undefined')?.changed();
-		}
+  private _setObject(object: Partial<O>): void {
+    for (const key of Object.keys(object)) {
+      this.set(key as keyof O, object[key as keyof O]);
+    }
+  }
 
-		return true;
-	}
+  private _setDefaultObject(object: Partial<O>): void {
+    for (const key of Object.keys(object)) {
+      this.setDefault(key as keyof O, object[key as keyof O]);
+    }
+  }
 
-	destroy(): void {
-		this.clear();
-		if (this.name && ReactiveDict._dictsToMigrate[this.name]) {
-			delete ReactiveDict._dictsToMigrate[this.name];
-		}
-	}
-
-	private _setObject(object: Record<string, any>) {
-		for (const key of Object.keys(object)) {
-			this.set(key, object[key]);
-		}
-	}
-
-	private _ensureKeyDep(key: string): Tracker.Dependency {
-		let dep = this._keyDeps.get(key);
-		if (!dep) {
-			dep = new Tracker.Dependency();
-			this._keyDeps.set(key, dep);
-		}
-		return dep;
-	}
-
-	_getMigrationData(): Record<string, string> {
-		const migrationData: Record<string, string> = {};
-		for (const [key, value] of this._map.entries()) {
-			migrationData[key] = value === undefined ? 'undefined' : EJSON.stringify(value);
-		}
-		return migrationData;
-	}
-
-	static _registerDictForMigrate(dictName: string, dict: ReactiveDict) {
-		ReactiveDict._dictsToMigrate[dictName] = dict;
-	}
-
-	static _loadMigratedDict(_dictName: string) {
-		return null;
-	}
+  private _ensureKey(key: string): void {
+    if (!(key in this.keyDeps)) {
+      this.keyDeps[key] = new Tracker.Dependency();
+      this.keyValueDeps[key] = {};
+    }
+  }
 }

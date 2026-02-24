@@ -1,7 +1,7 @@
 // tracker.test.ts
 
 import { describe, it, expect, vi } from 'vitest';
-import * as Tracker from './tracker';
+import { Tracker } from './tracker';
 
 describe('tracker', () => {
   it('run', () => {
