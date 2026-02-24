@@ -1,0 +1,22 @@
+{
+  "name": "meteorite",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "typescript": "~5.9.3",
+    "vite": "^8.0.0-beta.15",
+    "vitest": "^4.1.0-beta.4"
+  },
+  "pnpm": {
+    "overrides": {
+      "vite": "^8.0.0-beta.15",
+      "vitest": "^4.1.0-beta.4"
+    }
+  }
+}
