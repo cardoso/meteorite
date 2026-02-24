@@ -1,1 +1,1 @@
-export * as DiffSequence from './diff-sequence-core.ts';
+export * as DiffSequence from './diff-sequence.core.ts';

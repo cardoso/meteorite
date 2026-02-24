@@ -469,5 +469,7 @@ export const EJSON = {
 		return ret;
 	},
 
-	newBinary: Base64.newBinary
+	newBinary: Base64.newBinary,
+	_adjustTypesFromJSONValue: adjustTypesFromJSONValue,
+	_adjustTypesToJSONValue: adjustTypesToJSONValue,
 };
