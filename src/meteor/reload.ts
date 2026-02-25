@@ -1,12 +1,36 @@
-function debug(message: string, context?: any) {
-	console.debug(`[reload] ${message}`, JSON.stringify(context));
-}
+export type ReloadOptions = {
+	immediateMigration?: boolean;
+	[key: string]: unknown;
+};
+
+export type MigrationResult = [boolean, unknown?] | void;
+
+export type ProviderCallback = (
+	tryReload: () => void,
+	options: ReloadOptions
+) => MigrationResult;
+
+export type Provider = {
+	name?: string;
+	callback: ProviderCallback;
+};
 
 const KEY_NAME = 'Meteor_Reload';
 
-let oldData: any = {};
-let oldJson: string | null = null;
-let safeSessionStorage: any = null;
+// Allow external configuration of debug mode
+let isDebugEnabled = false;
+
+export function setDebug(enabled: boolean): void {
+	isDebugEnabled = enabled;
+}
+
+function debug(message: string, context?: unknown): void {
+	if (!isDebugEnabled) return;
+	console.log(`[reload] ${message}`, context ? JSON.stringify(context) : '');
+}
+
+// Safely evaluate sessionStorage support
+let safeSessionStorage: Storage | null = null;
 try {
 	safeSessionStorage = window.sessionStorage;
 	if (safeSessionStorage) {
@@ -18,174 +42,153 @@ try {
 } catch (e) {
 	safeSessionStorage = null;
 }
-function _getData() {
-	return safeSessionStorage?.getItem(KEY_NAME);
-}
+
+let old_data: Record<string, unknown> = {};
+let providers: Provider[] = [];
+let reloading = false;
+
+// Initialization: Read in old data at startup.
+let old_json: string | null = null;
 
 if (safeSessionStorage) {
-	oldJson = _getData();
+	old_json = safeSessionStorage.getItem(KEY_NAME);
 	safeSessionStorage.removeItem(KEY_NAME);
-} else {
-	console.debug('Browser does not support sessionStorage. Not retrieving migration state.');
 }
 
-if (!oldJson) {
-	oldJson = '{}';
-}
-let oldParsed: any = {};
+if (!old_json) old_json = '{}';
+
 try {
-	oldParsed = JSON.parse(oldJson);
-	if (typeof oldParsed !== 'object') {
-		console.debug('Got bad data on reload. Ignoring.');
-		oldParsed = {};
+	const old_parsed = JSON.parse(old_json);
+	if (typeof old_parsed !== 'object' || old_parsed === null) {
+		console.warn('Got bad data on reload. Ignoring.');
+	} else if (old_parsed.reload && typeof old_parsed.data === 'object') {
+		old_data = old_parsed.data as Record<string, unknown>;
 	}
 } catch (err) {
-	console.debug('Got invalid JSON on reload. Ignoring.');
+	console.warn('Got invalid JSON on reload. Ignoring.');
 }
 
-if (oldParsed.reload && typeof oldParsed.data === 'object') {
-	oldData = oldParsed.data;
-}
+export const Reload = {
+	_getData(): string | null {
+		return safeSessionStorage && safeSessionStorage.getItem(KEY_NAME);
+	},
 
-let providers: any[] = [];
-function _onMigrate(...args: [string, (...args: any[]) => any] | [(...args: any[]) => any]) {
-	let name: string | undefined;
-	let callback: ((...args: any[]) => any) | undefined;
+	_migrationData(name: string): unknown {
+		debug('_migrationData', { name });
+		return old_data[name];
+	},
 
-	if (args.length === 1) {
-		callback = args[0];
-	} else if (args.length === 2) {
-		name = args[0] as string;
-		callback = args[1];
-	}
+	_onMigrate(nameOrCallback: string | ProviderCallback, callback?: ProviderCallback): void {
+		let name: string | undefined;
+		let cb: ProviderCallback;
 
-	debug('_onMigrate', { name });
-	if (!callback) {
-		callback = name as unknown as (...args: any[]) => any;
-		name = undefined as unknown as string;
-		debug('_onMigrate no callback');
-	}
-
-	providers.push({ name, callback });
-}
-function _migrationData(name: string) {
-	debug('_migrationData', { name });
-	return oldData[name];
-}
-const pollProviders = function (tryReload: ((...args: any[]) => any) | null, options: any) {
-	debug('pollProviders', { options });
-	tryReload =
-		tryReload ||
-		function () {
-			// noop
-		};
-	options = options || {};
-
-	const { immediateMigration } = options;
-	debug(`pollProviders is ${immediateMigration ? '' : 'NOT '}immediateMigration`, { options });
-	const migrationData: any = {};
-	let allReady = true;
-	providers.forEach((p) => {
-		const { callback, name } = p || {};
-		const [ready, data] = callback(tryReload, options) || [];
-
-		debug(`pollProviders provider ${name || 'unknown'} is ${ready ? 'ready' : 'NOT ready'}`, { options });
-		if (!ready) {
-			allReady = false;
+		if (typeof nameOrCallback === 'function') {
+			cb = nameOrCallback;
+			debug('_onMigrate no callback');
+		} else {
+			name = nameOrCallback;
+			cb = callback!;
+			debug('_onMigrate', { name });
 		}
 
-		if (data !== undefined && name) {
-			migrationData[name] = data;
+		providers.push({ name, callback: cb });
+	},
+
+	_migrate(tryReload?: () => void, options: ReloadOptions = {}): boolean {
+		debug('_migrate', { options });
+		const tryReloadFn = tryReload || (() => { });
+		const { immediateMigration } = options;
+
+		const migrationData: Record<string, unknown> = {};
+		let allReady = true;
+
+		for (const p of providers) {
+			const { callback, name } = p;
+			const result = callback(tryReloadFn, options);
+			const [ready, data] = result || [false, undefined];
+
+			debug(`pollProviders provider ${name || 'unknown'} is ${ready ? 'ready' : 'NOT ready'}`, { options });
+
+			if (!ready) {
+				allReady = false;
+			}
+
+			if (data !== undefined && name) {
+				migrationData[name] = data;
+			}
 		}
-	});
 
-	if (allReady) {
-		debug('pollProviders allReady', { options, migrationData });
-		return migrationData;
-	}
+		if (!allReady && !immediateMigration) {
+			return false;
+		}
 
-	if (immediateMigration) {
-		debug('pollProviders immediateMigration', { options, migrationData });
-		return migrationData;
-	}
-
-	return null;
-};
-function _migrate(tryReload: ((...args: any[]) => any) | null, options: any) {
-	debug('_migrate', { options });
-	const migrationData = pollProviders(tryReload, options);
-	if (migrationData === null) {
-		return false; // not ready yet..
-	}
-
-	let json;
-	try {
-		json = JSON.stringify({
-			data: migrationData,
-			reload: true,
-		});
-	} catch (err) {
-		console.debug("Couldn't serialize data for migration", migrationData);
-		throw err;
-	}
-
-	if (safeSessionStorage) {
+		let json: string;
 		try {
-			safeSessionStorage.setItem(KEY_NAME, json);
+			json = JSON.stringify({
+				data: migrationData,
+				reload: true,
+			});
 		} catch (err) {
-			console.debug("Couldn't save data for migration to sessionStorage", err);
+			console.error("Couldn't serialize data for migration", migrationData);
+			throw err;
 		}
-	} else {
-		console.debug('Browser does not support sessionStorage. Not saving migration state.');
-	}
 
-	return true;
-}
-function _withFreshProvidersForTest(f: () => void) {
-	const originalProviders = providers.slice(0);
-	providers = [];
-	try {
-		f();
-	} finally {
-		providers = originalProviders;
-	}
-}
-let reloading = false;
-function _reload(options: any) {
-	debug('_reload', { options });
-	options = options || {};
+		if (safeSessionStorage) {
+			try {
+				safeSessionStorage.setItem(KEY_NAME, json);
+			} catch (err) {
+				console.error("Couldn't save data for migration to sessionStorage", err);
+			}
+		} else {
+			console.warn('Browser does not support sessionStorage. Not saving migration state.');
+		}
 
-	if (reloading) {
-		debug('reloading in progress already', { options });
-		return;
-	}
-	reloading = true;
+		return true;
+	},
 
-	function tryReload() {
-		debug('tryReload');
-		setTimeout(reload, 1);
-	}
+	_withFreshProvidersForTest(f: () => void): void {
+		const originalProviders = providers.slice();
+		providers = [];
+		try {
+			f();
+		} finally {
+			providers = originalProviders;
+		}
+	},
 
-	function forceBrowserReload() {
-		debug('forceBrowserReload');
-		if (window.location.hash || window.location.href.endsWith('#')) {
-			window.location.reload();
+	_reload(options: ReloadOptions = {}): void {
+		debug('_reload', { options });
+
+		if (reloading) {
+			debug('reloading in progress already', { options });
 			return;
 		}
+		reloading = true;
 
-		window.location.replace(window.location.href);
-	}
-
-	function reload() {
-		debug('reload');
-		if (!_migrate(tryReload, options)) {
-			return;
+		function tryReload() {
+			debug('tryReload');
+			setTimeout(reload, 1);
 		}
 
-		forceBrowserReload();
+		function forceBrowserReload() {
+			debug('forceBrowserReload');
+			if (window.location.hash || window.location.href.endsWith('#')) {
+				window.location.reload();
+				return;
+			}
+			window.location.replace(window.location.href);
+		}
+
+		function reload() {
+			debug('reload');
+			if (!Reload._migrate(tryReload, options)) {
+				reloading = false;
+				return;
+			}
+
+			forceBrowserReload();
+		}
+
+		tryReload();
 	}
-
-	tryReload();
-}
-
-export const Reload = { _getData, _onMigrate, _migrationData, _migrate, _withFreshProvidersForTest, _reload };
+};

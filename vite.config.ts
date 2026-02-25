@@ -9,11 +9,11 @@ export default defineConfig({
         },
     },
     test: {
-        include: ['src/**/*.spec.ts'],
+        include: ['**/*.spec.ts'],
         browser: {
             enabled: true,
             provider: playwright(),
-            instances: [{browser: 'chromium' }],
+            instances: [{browser: 'chromium', headless: true}] // Adjust as needed,
         }
     },
 });

@@ -1,7 +1,7 @@
 import { check, Match } from './check.ts';
 import { EJSON } from './ejson.ts';
 import { MeteorError } from './meteor.ts';
-import { _selectorIsIdPerhapsAsObject } from './minimongo.ts';
+// import { _selectorIsIdPerhapsAsObject } from './minimongo.ts';
 import { isKey } from './utils/isKey.ts';
 
 type MongoDoc = Record<string, unknown>;
@@ -229,9 +229,9 @@ export class RestrictedCollectionMixin {
 		check(mutator, Object);
 		const safeOptions = Object.assign(Object.create(null), options);
 
-		if (!_selectorIsIdPerhapsAsObject(selector)) {
-			throw new Error('validated update should be of a single ID');
-		}
+		// if (!_selectorIsIdPerhapsAsObject(selector)) {
+		// 	throw new Error('validated update should be of a single ID');
+		// }
 		if (safeOptions.upsert) {
 			throw new MeteorError(403, 'Access denied. Upserts not allowed in a restricted collection.');
 		}
