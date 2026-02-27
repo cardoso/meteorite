@@ -496,7 +496,7 @@ export class Connection {
     return this._apply(name, stubOptions, args, options, callback);
   }
 
-  public applyAsync(name: string, args: any[], options?: any, callback: any = null): any {
+  public applyAsync(name: string, args?: any[] | undefined, options?: any, callback: any = null): any {
     if (this._currentMethodInvocation) {
       DDP._CurrentMethodInvocation._set(this._currentMethodInvocation);
       this._currentMethodInvocation = null;
@@ -556,7 +556,7 @@ export class Connection {
     );
   }
 
-  protected _baseApplyAsync(name: string, args: any[], options?: any, callback: any = null): any {
+  protected _baseApplyAsync(name: string, args?: any[] | undefined, options?: any, callback: any = null): any {
     const stubPromise = this._applyAsyncStubInvocation(name, args, options);
     const promise: any = this._applyAsync({ name, args, options, callback, stubPromise });
     
@@ -572,7 +572,7 @@ export class Connection {
     return promise;
   }
 
-  protected async _applyAsyncStubInvocation(name: string, args: any[], options?: any): Promise<any> {
+  protected async _applyAsyncStubInvocation(name: string, args?: any[] | undefined, options?: any): Promise<any> {
     const { stubInvocation, invocation, ...stubOptions } = this._stubCall(name, EJSON.clone(args), options);
     
     if (stubOptions.hasStub) {
@@ -702,7 +702,7 @@ export class Connection {
     return result;
   }
 
-  protected _stubCall(name: string, args: any[], options?: any): any {
+  protected _stubCall(name: string, args?: any[] | undefined, options?: any): any {
     const enclosing = DDP._CurrentMethodInvocation.get();
     const stub = this._methodHandlers[name];
     const alreadyInSimulation = enclosing?.isSimulation;

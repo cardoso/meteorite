@@ -1,3 +1,7 @@
 import { AccountsClient } from "./accounts-client.ts";
 
-export const Accounts = new AccountsClient();
+export interface Accounts extends AccountsClient {
+
+}
+
+export const Accounts: Accounts = new AccountsClient();

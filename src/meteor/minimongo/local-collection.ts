@@ -1,4 +1,4 @@
-import { Cursor } from './cursor.ts';
+import { Cursor, type CursorOptions } from './cursor.ts';
 import { IdMap } from './id-map.ts';
 import { ObserveQueue } from './observe-queue.ts';
 import { DiffSequence } from 'meteor/diff-sequence'; // Adjust to your ported path
@@ -12,7 +12,7 @@ import { EJSON } from 'meteor/ejson';
 const generateId = () => Math.random().toString(36).substring(2, 15);
 const hasOwn = Object.prototype.hasOwnProperty;
 
-type Doc = { _id: string | MongoID.ObjectID;[key: string]: any };
+type Doc = { _id: string | MongoID.ObjectID; [key: string]: any };
 type Transform<TDoc, TDocTransformed> = {
   (doc: TDoc): TDocTransformed;
   __wrappedTransform__?: boolean;
@@ -85,11 +85,11 @@ export class LocalCollection<TDoc extends Doc> {
     return wrapped;
   }
 
-  find(selector: any = {}, options: any = {}): Cursor<TDoc> {
+  find<TDocTransformed extends TDoc>(selector: any = {}, options: CursorOptions<TDoc, TDocTransformed> = {}): Cursor<TDoc, TDocTransformed> {
     return new Cursor(this, selector, options);
   }
 
-  findOne(selector: any = {}, options: any = {}) {
+  findOne<TDocTransformed extends TDoc>(selector: any = {}, options: { transform?: Transform<TDoc, TDocTransformed> | null | undefined } = {}): TDocTransformed | undefined {
     return this.find(selector, { ...options, limit: 1 }).fetch()[0];
   }
 

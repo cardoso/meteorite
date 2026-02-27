@@ -13,11 +13,11 @@ export type StreamStatus = {
 };
 
 export type StreamClientOptions = {
-  retry?: boolean;
-  connectTimeoutMs?: number;
+  retry?: boolean | undefined;
+  connectTimeoutMs?: number | undefined;
   ConnectionError?: new (message: string) => Error;
-  _dontPrintErrors?: boolean;
-  headers?: Record<string, string>;
+  _dontPrintErrors?: boolean | undefined;
+  headers?: Record<string, string> | undefined;
   _sockJsOptions?: Record<string, any>;
 };
 

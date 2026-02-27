@@ -1,6 +1,8 @@
+import type { MongoID } from "meteor/mongo-id";
+
 export type Document = Record<string, any>;
-export type MatchResult = { result: boolean; distance?: number; arrayIndices?: number[] };
-export type BranchedValue = { value: any; dontIterate?: boolean; arrayIndices?: (number | string)[] };
+export type MatchResult = { result: boolean; distance?: number | undefined; arrayIndices?: number[] };
+export type BranchedValue = { value: any; dontIterate?: boolean; arrayIndices?: (number | string)[] | undefined };
 
 const hasOwn = Object.prototype.hasOwnProperty;
 
@@ -529,18 +531,18 @@ export class Matcher {
         this._paths[path] = true;
     }
 
-    private _compileSelector(selector: any): (doc: any) => MatchResult {
+    private _compileSelector(selector: string | Function | { _id: string | MongoID.ObjectID }): (doc: { _id: string | MongoID.ObjectID }) => MatchResult {
         if (typeof selector === 'function') {
             this._isSimple = false;
             this._selector = selector;
             this._recordPathUsed('');
-            return (doc: any) => ({ result: !!selector.call(doc) });
+            return (doc) => ({ result: !!selector.call(doc) });
         }
 
         if (typeof selector === 'string') {
             this._selector = { _id: selector };
             this._recordPathUsed('_id');
-            return (doc: any) => ({ result: isEqual(doc._id, selector) });
+            return (doc) => ({ result: isEqual(doc._id, selector) });
         }
 
         if (!selector || (hasOwn.call(selector, '_id') && !selector._id)) {

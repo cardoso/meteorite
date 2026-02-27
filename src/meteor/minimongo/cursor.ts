@@ -6,9 +6,17 @@ import type { Matcher } from './matcher.ts';
 import type { Sorter } from './sorter.ts';
 import type { MongoID } from 'meteor/mongo-id';
 
+export type CursorOptions<TDoc, TDocTransformed extends TDoc> = {
+    sort?: any;
+    skip?: number;
+    limit?: number;
+    reactive?: boolean;
+    transform?: ((doc: TDoc) => TDocTransformed) | null;
+}
 
-export class Cursor<T extends { _id: string | MongoID.ObjectID }> {
-    private collection: LocalCollection<T>;
+
+export class Cursor<TDoc extends { _id: string | MongoID.ObjectID }, TDocTransformed extends TDoc = TDoc> {
+    private collection: LocalCollection<TDoc>;
     private matcher: Matcher;
     private sorter: Sorter | null = null;
     private skip: number;
@@ -16,7 +24,7 @@ export class Cursor<T extends { _id: string | MongoID.ObjectID }> {
     private reactive: boolean;
     private _selectorId?: string;
 
-    constructor(collection: LocalCollection<T>, selector: any, options: any = {}) {
+    constructor(collection: LocalCollection<TDoc>, selector: any, options: CursorOptions<TDoc, TDocTransformed> = {}) {
         this.collection = collection;
         this.matcher = new collection.Matcher(selector); // Pass your Matcher implementation here
 
@@ -35,13 +43,13 @@ export class Cursor<T extends { _id: string | MongoID.ObjectID }> {
         this.reactive = options.reactive !== false && typeof Tracker !== 'undefined';
     }
 
-    fetch(): T[] {
-        const result: T[] = [];
+    fetch(): TDocTransformed[] {
+        const result: TDocTransformed[] = [];
         this.forEach(doc => result.push(doc));
         return result;
     }
 
-    fetchAsync(): Promise<T[]> {
+    fetchAsync(): Promise<TDocTransformed[]> {
         return Promise.resolve(this.fetch());
     }
 
@@ -50,7 +58,7 @@ export class Cursor<T extends { _id: string | MongoID.ObjectID }> {
         return this._getRawObjects({ ordered: true }).length;
     }
 
-    forEach(callback: (doc: T, index: number) => void, thisArg?: any) {
+    forEach(callback: (doc: TDocTransformed, index: number) => void, thisArg?: any) {
         if (this.reactive) {
             this._depend({ addedBefore: true, removed: true, changed: true, movedBefore: true });
         }
@@ -60,13 +68,13 @@ export class Cursor<T extends { _id: string | MongoID.ObjectID }> {
         });
     }
 
-    map<U>(callback: (doc: T, index: number) => U, thisArg?: any): U[] {
+    map<U>(callback: (doc: TDocTransformed, index: number) => U, thisArg?: any): U[] {
         const result: U[] = [];
         this.forEach((doc, i) => result.push(callback.call(thisArg, doc, i)));
         return result;
     }
 
-    observe(callbacks: any) {
+    observe(callbacks: any): { stop: () => void; } {
         // Determine if it's ordered based on callbacks
         const ordered = !!(callbacks.addedAt || callbacks.changedAt || callbacks.movedTo || callbacks.removedAt);
 

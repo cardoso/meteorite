@@ -1,20 +1,20 @@
 import { LocalCollection } from "meteor/minimongo";
 import { EJSON } from "meteor/ejson";
 import { Random } from "meteor/random";
-// Note: Adjust import paths to match where you extracted/hosted these packages
-// If using standard MongoDB object IDs, you can replace MongoID with a bson ObjectId
 import { MongoID } from "meteor/mongo-id";
 import { Meteor } from "meteor/meteor";
+import type { CursorOptions } from "meteor/minimongo";
 
-export type Document = { _id: string;[key: string]: any };
+export type Document = { _id: string; [key: string]: any };
 export type Selector = Partial<Document> | string;
-export type Modifier = { $set?: Record<string, any>; $unset?: Record<string, any>; [key: string]: any };
+export type Modifier = { $set?: Record<string, any>; $unset?: Record<string, any>;[key: string]: any };
 
 export type CollectionOptions<T, U = T> = {
-  connection?: DDPConnection;
+  connection?: DDPConnection | undefined;
   idGeneration?: "STRING" | "MONGO";
   transform?: ((doc: T) => U) | null;
   defineMutationMethods?: boolean;
+  _preventAutopublish?: boolean;
 };
 
 export type DDPConnection = {
@@ -31,14 +31,14 @@ export type UpdateOptions = {
   insertedId?: string | any;
 };
 
-export class Collection<T extends Document = Document, U = T> {
+export class Collection<TDoc extends Document = Document, TOutDoc extends TDoc = TDoc> {
   private _name: string | null;
-  private _localCollection: LocalCollection<T>;
+  private _localCollection: LocalCollection<TDoc>;
   private _connection: DDPConnection;
-  private _transform: ((doc: T) => U) | null;
+  private _transform: ((doc: TDoc) => TOutDoc) | null;
   private _idGeneration: "STRING" | "MONGO";
 
-  constructor(name: string | null, options: CollectionOptions<T, U> = {}) {
+  constructor(name: string | null, options: CollectionOptions<TDoc, TOutDoc> = {}) {
     this._name = name;
     this._connection = options.connection ?? Meteor.connection;
     this._idGeneration = options.idGeneration || "STRING";
@@ -46,9 +46,11 @@ export class Collection<T extends Document = Document, U = T> {
     // In Meteor, LocalCollection handles the actual caching and Minimongo queries
     this._localCollection = new LocalCollection(name);
 
+    const { transform } = options;
+
     // Wrap transform to safely ignore non-objects
-    this._transform = options.transform
-      ? (doc: T) => (doc && typeof doc === "object" ? options.transform!(doc) : doc as any)
+    this._transform = transform
+      ? (doc) => (doc && typeof doc === "object" ? transform(doc) : doc)
       : null;
 
     if (this._isRemote()) {
@@ -124,7 +126,7 @@ export class Collection<T extends Document = Document, U = T> {
             const modifier: any = {};
             keys.forEach((key) => {
               const value = msg.fields![key];
-              if (EJSON.equals(doc[key], value)) return;
+              if (EJSON.equals(doc![key], value)) return;
               if (value === undefined) {
                 if (!modifier.$unset) modifier.$unset = {};
                 modifier.$unset[key] = 1;
@@ -175,14 +177,14 @@ export class Collection<T extends Document = Document, U = T> {
     });
   }
 
-  findOne(selector: Selector = {}, options: any = {}): U | undefined {
+  findOne(selector: Selector = {}, options: CursorOptions<TDoc, TOutDoc> = {}): TOutDoc | undefined {
     return this._localCollection.findOne(selector, {
       transform: this._transform,
       ...options
     });
   }
 
-  async findOneAsync(selector: Selector = {}, options: any = {}): Promise<U | undefined> {
+  async findOneAsync(selector: Selector = {}, options: any = {}): Promise<TOutDoc | undefined> {
     return this.findOne(selector, options);
   }
 
@@ -224,8 +226,8 @@ export class Collection<T extends Document = Document, U = T> {
     return selector;
   }
 
-  insert(doc: Partial<T>, callback?: Function): any {
-    const clonedDoc = EJSON.clone(doc) as T;
+  insert(doc: Partial<TDoc>, callback?: Function): any {
+    const clonedDoc = EJSON.clone(doc) as TDoc;
     if (!clonedDoc._id) clonedDoc._id = this._generateId();
 
     // Optimistic UI local stub application
@@ -243,7 +245,7 @@ export class Collection<T extends Document = Document, U = T> {
     return clonedDoc._id;
   }
 
-  async insertAsync(doc: Partial<T>): Promise<any> {
+  async insertAsync(doc: Partial<TDoc>): Promise<any> {
     const clonedDoc = EJSON.clone(doc);
     if (!clonedDoc._id) clonedDoc._id = this._generateId();
 

@@ -89,7 +89,7 @@ export const idStringify = (id: any): string => {
   }
 };
 
-export const idParse = (id: string): any => {
+export const idParse = (id: string) => {
   const firstChar = id.charAt(0);
   if (id === '') {
     return id;
@@ -98,7 +98,7 @@ export const idParse = (id: string): any => {
   } else if (firstChar === '-') {
     return id.substring(1);
   } else if (firstChar === '~') {
-    return JSON.parse(id.substring(1));
+    return Number(JSON.parse(id.substring(1)));
   } else if (_looksLikeObjectID(id)) {
     return new ObjectID(id);
   } else {

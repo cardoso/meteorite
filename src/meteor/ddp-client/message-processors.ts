@@ -1,7 +1,10 @@
 import { DDPCommon } from 'meteor/ddp-common';
 import { Meteor } from 'meteor/meteor';
 import { DDP } from './namespace.ts';
-import { isEmpty, hasOwn } from "meteor/ddp-common/utils";
+
+const hasOwn = Object.prototype.hasOwnProperty;
+
+const { isEmpty } = DDPCommon;
 
 export type MessagePayload = {
   msg: string;

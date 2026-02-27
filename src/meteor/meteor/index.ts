@@ -23,6 +23,8 @@ export declare namespace Meteor {
   type User = {
     _id: string;
   };
+
+  type Error = MeteorError;
 }
 
 export const Meteor = {
@@ -30,7 +32,14 @@ export const Meteor = {
 
 
   user: Accounts.user.bind(Accounts),
+  userAsync: Accounts.userAsync.bind(Accounts),
   userId: Accounts.userId.bind(Accounts),
+  loggingIn: Accounts.loggingIn.bind(Accounts),
+  loggingOut: Accounts.loggingOut.bind(Accounts),
+  logout: Accounts.logout.bind(Accounts),
+  logoutAllClients: Accounts.logoutAllClients.bind(Accounts),
+  logoutOtherClients: Accounts.logoutOtherClients.bind(Accounts),
+  // loginWithPassword: Accounts.loginWithPassword.bind(Accounts),
   EnvironmentVariable,
   bindEnvironment,
   get connection() {

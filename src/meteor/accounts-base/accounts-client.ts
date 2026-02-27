@@ -1,18 +1,25 @@
 import { Meteor } from 'meteor/meteor';
 import { Tracker } from 'meteor/tracker';
 import { ReactiveVar } from 'meteor/reactive-var';
-// import { Random } from 'meteor/random';
 import { DDP } from 'meteor/ddp-client';
 import { AccountsCommon, type AccountsConfigOptions } from './accounts-common.ts';
-// import { setupMeteorAccounts } from './setup-meteor-accounts.ts';
+import type { AccountsOAuth } from 'meteor/accounts-oauth';
+import type { ServiceConfiguration } from 'meteor/service-configuration';
 
-// setupMeteorAccounts();
+export type PageLoadLoginAttemptInfo = {
+  type: string;
+  allowed: boolean;
+  error?: Error | any;
+  methodName: string;
+  methodArguments: any[];
+};
+
 export class AccountsClient extends AccountsCommon {
   private _loggingIn = new ReactiveVar(false);
   private _loggingOut = new ReactiveVar(false);
   private _loginServicesHandle: any;
-  private _pageLoadLoginCallbacks: Function[] = [];
-  private _pageLoadLoginAttemptInfo: any = null;
+  private _pageLoadLoginCallbacks: ((info: PageLoadLoginAttemptInfo) => void)[] = [];
+  private _pageLoadLoginAttemptInfo: PageLoadLoginAttemptInfo | null = null;
   private _loginFuncs: Record<string, Function> = {};
   private _loginCallbacksCalled = false;
   private _autoLoginEnabled = true;
@@ -20,20 +27,24 @@ export class AccountsClient extends AccountsCommon {
   private _reconnectStopper?: any;
   private _lastLoginTokenWhenPolled: string | null = null;
   private _pollIntervalTimer?: ReturnType<typeof setInterval>;
-  
+
   public savedHash: string;
   public storageLocation!: Storage;
-  
+
   public LOGIN_TOKEN_KEY!: string;
   public LOGIN_TOKEN_EXPIRES_KEY!: string;
   public USER_ID_KEY!: string;
+
+  public oauth?: typeof AccountsOAuth;
+  public loginServiceConfiguration?: typeof ServiceConfiguration.configurations;
+  public ConfigError?: typeof ServiceConfiguration.ConfigError;
 
   constructor(options: AccountsConfigOptions = {}) {
     super(options);
 
     this._loginServicesHandle = this.connection?.subscribe("meteor.loginServiceConfiguration");
     this.savedHash = window.location.hash;
-    
+
     this._initUrlMatching();
     this.initStorageLocation(options);
     this._initLocalStorage();
@@ -95,19 +106,52 @@ export class AccountsClient extends AccountsCommon {
       });
   }
 
-  public callLoginMethod(options: {
+  public logoutAllClients(callback?: (err?: Error) => void): void {
+    this._loggingOut.set(true);
+
+    this.connection?.applyAsync('logoutAllClients', [], { wait: true })
+      .then(() => {
+        this._loggingOut.set(false);
+        this._loginCallbacksCalled = false;
+        this.makeClientLoggedOut();
+        if (callback) callback();
+      })
+      .catch((e: Error) => {
+        this._loggingOut.set(false);
+        if (callback) callback(e);
+      });
+  }
+
+  public logoutOtherClients(callback?: (err?: Error) => void): void {
+    this.connection?.applyAsync('getNewToken', [], { wait: true })
+      .then((result: any) => {
+        const userId = this.userId();
+        if (userId) {
+          this._storeLoginToken(userId, result.token, result.tokenExpires);
+        }
+        return this.connection?.applyAsync('removeOtherTokens', [], { wait: true });
+      })
+      .then(() => {
+        if (callback) callback();
+      })
+      .catch((err: Error) => {
+        if (callback) callback(err);
+      });
+  }
+
+  public callLoginMethod({ userCallback = () => null, ...options }: {
     methodName?: string;
-    methodArguments?: any[];
+    methodArguments?: any[] | undefined;
     _suppressLoggingIn?: boolean;
     validateResult?: (result: any) => void;
-    userCallback?: (err?: Error, result?: any) => void;
+    userCallback?: ((err?: Error, result?: any) => void) | undefined;
   }): void {
     const opts = {
       methodName: 'login',
       methodArguments: [{}],
       _suppressLoggingIn: false,
       validateResult: () => null,
-      userCallback: () => null,
+      userCallback,
       ...options,
     };
 
@@ -143,18 +187,18 @@ export class AccountsClient extends AccountsCommon {
 
         this._reconnectStopper = DDP.onReconnect((conn: any) => {
           if (conn !== this.connection) return;
-          
+
           reconnected = true;
           const storedToken = this._storedLoginToken();
-          
+
           if (storedToken) {
             result = { token: storedToken, tokenExpires: this._storedLoginTokenExpires() };
           }
-          
+
           if (!result.tokenExpires) {
             result.tokenExpires = this._tokenExpiration(new Date());
           }
-            
+
           if (this._tokenExpiresSoon(result.tokenExpires)) {
             this.makeClientLoggedOut();
           } else {
@@ -232,6 +276,35 @@ export class AccountsClient extends AccountsCommon {
     this.connection?.setUserId(userId);
   }
 
+  public loginServicesConfigured(): boolean {
+    return this._loginServicesHandle ? this._loginServicesHandle.ready() : false;
+  }
+
+  public onPageLoadLogin(f: (info: PageLoadLoginAttemptInfo) => void): void {
+    if (this._pageLoadLoginAttemptInfo) {
+      f(this._pageLoadLoginAttemptInfo);
+    } else {
+      this._pageLoadLoginCallbacks.push(f);
+    }
+  }
+
+  public _pageLoadLogin(attemptInfo: PageLoadLoginAttemptInfo): void {
+    if (this._pageLoadLoginAttemptInfo) {
+      console.warn('Ignoring unexpected duplicate page load login attempt info');
+      return;
+    }
+
+    this._pageLoadLoginCallbacks.forEach(callback => callback(attemptInfo));
+    this._pageLoadLoginCallbacks = [];
+    this._pageLoadLoginAttemptInfo = attemptInfo;
+  }
+
+  protected override _startupCallback(callback: Function): void {
+    if (this._loginCallbacksCalled) {
+      setTimeout(() => callback({ type: 'resume' }), 0);
+    }
+  }
+
   public loginWithToken(token: string, callback?: (err?: Error) => void): void {
     this.callLoginMethod({
       methodArguments: [{ resume: token }],
@@ -242,11 +315,11 @@ export class AccountsClient extends AccountsCommon {
   private _storeLoginToken(userId: string, token: string, tokenExpires: string | Date): void {
     this.storageLocation.setItem(this.USER_ID_KEY, userId);
     this.storageLocation.setItem(this.LOGIN_TOKEN_KEY, token);
-    
+
     if (!tokenExpires) {
       tokenExpires = this._tokenExpiration(new Date());
     }
-    
+
     this.storageLocation.setItem(this.LOGIN_TOKEN_EXPIRES_KEY, String(tokenExpires));
     this._lastLoginTokenWhenPolled = token;
   }
@@ -288,12 +361,20 @@ export class AccountsClient extends AccountsCommon {
       if (token) {
         const userId = this._storedUserId();
         if (userId) this.connection?.setUserId(userId);
-        
+
         this.loginWithToken(token, (err) => {
           if (err) {
             console.error(`Error logging in with token: ${err}`);
             this.makeClientLoggedOut();
           }
+
+          this._pageLoadLogin({
+            type: "resume",
+            allowed: !err,
+            error: err,
+            methodName: "login",
+            methodArguments: [{ resume: token }]
+          });
         });
       }
     }
@@ -328,7 +409,18 @@ export class AccountsClient extends AccountsCommon {
   private _initUrlMatching(): void {
     this._autoLoginEnabled = true;
     this._accountsCallbacks = {};
-    // In a modern router setup (like React Router), you would typically handle hashes
-    // at the route level rather than deeply coupling it here. Kept for backwards compat.
+    // Modern apps should handle hash parsing in their router, but keeping structure for compatibility
+  }
+
+  public onResetPasswordLink(callback: Function): void {
+    this._accountsCallbacks["reset-password"] = callback;
+  }
+
+  public onEmailVerificationLink(callback: Function): void {
+    this._accountsCallbacks["verify-email"] = callback;
+  }
+
+  public onEnrollmentLink(callback: Function): void {
+    this._accountsCallbacks["enroll-account"] = callback;
   }
 }

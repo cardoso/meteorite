@@ -10,7 +10,7 @@ export type EqualsFunc<T> = (oldValue: T, newValue: T) => boolean;
  */
 export class ReactiveVar<T> {
   private curValue: T;
-  private equalsFunc?: EqualsFunc<T>;
+  private equalsFunc?: EqualsFunc<T> | undefined;
   private dep: Tracker.Dependency;
 
   /**
