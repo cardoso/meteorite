@@ -1,5 +1,5 @@
 import { check, Match } from './check.ts';
-import { EJSON } from './ejson.ts';
+import { EJSON } from './ejson/ejson.ts';
 import { MeteorError } from './meteor.ts';
 // import { _selectorIsIdPerhapsAsObject } from './minimongo.ts';
 import { isKey } from './utils/isKey.ts';

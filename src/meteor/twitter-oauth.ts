@@ -1,13 +1,13 @@
-import { Meteor } from './meteor.ts';
-import { OAuth, type OAuthConfiguration } from './oauth.ts';
-import { Random } from './random.ts';
+import { Meteor } from 'meteor/meteor';
+import { OAuth } from 'meteor/oauth';
+import { Random } from 'meteor/random';
 import { ServiceConfiguration } from './service-configuration.ts';
 import { hasOwn } from './utils/hasOwn.ts';
 
 export const validParamsAuthenticate = ['force_login', 'screen_name'];
 
 export const requestCredential = (
-	options: OAuthConfiguration,
+	options: OAuth.OAuthConfig,
 	credentialRequestCompleteCallback?: (token?: string | Error) => void,
 ): void => {
 	if (!credentialRequestCompleteCallback && typeof options === 'function') {

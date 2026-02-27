@@ -1,6 +1,6 @@
 export class IdMap<T = any> extends Map<string, T> {
   // Alias for Meteor's old IdMap.set
-  set(id: string, value: T): this {
+  override set(id: string, value: T): this {
     return super.set(id, value);
   }
 

@@ -7,7 +7,7 @@
     "types": ["vite/client"],
     "skipLibCheck": true,
     "paths": {
-      "meteor/*": ["./src/meteor/*"]
+      "meteor/*": ["./src/meteor/*/index.ts"]
     },
 
     /* Bundler mode */

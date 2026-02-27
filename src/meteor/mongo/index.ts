@@ -1,2 +1,2 @@
-export * as Mongo from './collection.ts';
-export type { Document } from './collection.ts';
+export { Mongo } from './namespace.ts';
+export { type Document, Collection } from './mongo.ts';

@@ -2,18 +2,21 @@ import { Tracker } from 'meteor/tracker';
 import { DiffSequence } from 'meteor/diff-sequence';
 import { CachingChangeObserver } from './caching-change-observer.ts';
 import { LocalCollection } from './local-collection.ts';
+import type { Matcher } from './matcher.ts';
+import type { Sorter } from './sorter.ts';
+import type { MongoID } from 'meteor/mongo-id';
 
 
-export class Cursor<T = any> {
-    private collection: LocalCollection;
-    private matcher: any; // Ported Matcher
-    private sorter: any; // Ported Sorter
+export class Cursor<T extends { _id: string | MongoID.ObjectID }> {
+    private collection: LocalCollection<T>;
+    private matcher: Matcher;
+    private sorter: Sorter | null = null;
     private skip: number;
     private limit: number | undefined;
     private reactive: boolean;
     private _selectorId?: string;
 
-    constructor(collection: LocalCollection, selector: any, options: any = {}) {
+    constructor(collection: LocalCollection<T>, selector: any, options: any = {}) {
         this.collection = collection;
         this.matcher = new collection.Matcher(selector); // Pass your Matcher implementation here
 
@@ -36,6 +39,10 @@ export class Cursor<T = any> {
         const result: T[] = [];
         this.forEach(doc => result.push(doc));
         return result;
+    }
+
+    fetchAsync(): Promise<T[]> {
+        return Promise.resolve(this.fetch());
     }
 
     count(): number {

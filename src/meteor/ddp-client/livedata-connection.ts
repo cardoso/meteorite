@@ -2,7 +2,7 @@ import { DDPCommon } from 'meteor/ddp-common';
 import { Tracker } from 'meteor/tracker';
 import { EJSON } from 'meteor/ejson';
 import { Random } from 'meteor/random';
-import { DDP } from './namespace.ts';
+import { DDP } from './namespace.js';
 import { MethodInvoker } from './method-invoker.ts';
 import { ConnectionStreamHandlers } from './connection-stream-handlers.ts';
 import { MongoIDMap } from './mongo-id-map.ts';
@@ -72,6 +72,12 @@ export class Connection {
   protected _heartbeat: any;
   public _liveDataWritesPromise?: Promise<void>;
 
+  // Async Stub Queue State
+  private _queueSize = 0;
+  private _queue: Promise<any> = Promise.resolve();
+  private _queueSend = false;
+  private _currentMethodInvocation: any = null;
+
   constructor(url: string | object, options?: ConnectionOptions) {
     this.options = {
       onConnected: () => {},
@@ -80,7 +86,6 @@ export class Connection {
       },
       heartbeatInterval: 17500,
       heartbeatTimeout: 15000,
-      npmFayeOptions: Object.create(null),
       reloadWithOutstanding: false,
       supportedDDPVersions: DDPCommon.SUPPORTED_DDP_VERSIONS,
       retry: true,
@@ -96,11 +101,10 @@ export class Connection {
       this._stream = new ClientStream(url, {
         retry: this.options.retry,
         ConnectionError: DDP.ConnectionError,
-        // headers: this.options.headers,
+        headers: this.options.headers,
         // _sockjsOptions: this.options._sockjsOptions,
         _dontPrintErrors: this.options._dontPrintErrors,
-        connectTimeoutMs: this.options.connectTimeoutMs,
-        // npmFayeOptions: this.options.npmFayeOptions
+        connectTimeoutMs: this.options.connectTimeoutMs
       });
     }
 
@@ -166,6 +170,41 @@ export class Connection {
     this._messageProcessors = new MessageProcessors(this);
     this._documentProcessors = new DocumentProcessors(this);
   }
+
+  // --- Queue Helpers ---
+
+  protected _queueFunction(fn: (resolve: any, reject: any) => void, promiseProps: any = {}): Promise<any> {
+    this._queueSize += 1;
+
+    let resolveFn: any;
+    let rejectFn: any;
+    
+    const promise = new Promise((resolve, reject) => {
+      resolveFn = resolve;
+      rejectFn = reject;
+    }) as any;
+
+    this._queue = this._queue.finally(() => {
+      fn(resolveFn, rejectFn);
+      return promise.stubPromise?.catch(() => {});
+    });
+
+    promise
+      .catch(() => {})
+      .finally(() => {
+        this._queueSize -= 1;
+        if (this._queueSize === 0) {
+          this._maybeMigrate();
+        }
+      });
+
+    promise.stubPromise = promiseProps.stubPromise;
+    promise.serverPromise = promiseProps.serverPromise;
+
+    return promise;
+  }
+
+  // --- Processors ---
 
   public _livedata_connected(msg: any): Promise<void> {
     return this._messageProcessors._livedata_connected(msg);
@@ -255,8 +294,23 @@ export class Connection {
     return true;
   }
 
+  // --- Subscriptions ---
+
   public subscribe(name: string, ...args: any[]): any {
-    const params = Array.prototype.slice.call(arguments, 1);
+    if (this._stream._neverQueued) {
+      return this._baseSubscribe(name, ...args);
+    }
+
+    this._queueSend = true;
+    try {
+      return this._baseSubscribe(name, ...args);
+    } finally {
+      this._queueSend = false;
+    }
+  }
+
+  protected _baseSubscribe(name: string, ...args: any[]): any {
+    const params = [...args];
     let callbacks: Record<string, any> = Object.create(null);
     
     if (params.length) {
@@ -355,6 +409,8 @@ export class Connection {
     return handle;
   }
 
+  // --- Methods ---
+
   public isAsyncCall(): boolean {
     return DDP._CurrentMethodInvocation._isCallAsyncMethodRunning();
   }
@@ -394,6 +450,31 @@ export class Connection {
   }
 
   public apply(name: string, args: any[], options?: any, callback?: any): any {
+    if (this._stream._neverQueued) {
+      return this._baseApply(name, args, options, callback);
+    }
+
+    if (!callback && typeof options === 'function') {
+      callback = options;
+      options = undefined;
+    }
+
+    const { methodInvoker, result } = this._baseApply(name, args, {
+      ...options,
+      _returnMethodInvoker: true,
+    }, callback);
+
+    if (methodInvoker) {
+      this._queueFunction((resolve) => {
+        this._addOutstandingMethod(methodInvoker, options);
+        resolve(undefined);
+      });
+    }
+
+    return result;
+  }
+
+  protected _baseApply(name: string, args: any[], options?: any, callback?: any): any {
     const { stubInvocation, invocation, ...stubOptions } = this._stubCall(name, EJSON.clone(args));
 
     if (stubOptions.hasStub) {
@@ -416,6 +497,66 @@ export class Connection {
   }
 
   public applyAsync(name: string, args: any[], options?: any, callback: any = null): any {
+    if (this._currentMethodInvocation) {
+      DDP._CurrentMethodInvocation._set(this._currentMethodInvocation);
+      this._currentMethodInvocation = null;
+    }
+
+    const enclosing = DDP._CurrentMethodInvocation.get();
+    const alreadyInSimulation = enclosing?.isSimulation;
+    const isFromCallAsync = enclosing?._isFromCallAsync;
+
+    if (
+      this._getIsSimulation({
+        isFromCallAsync,
+        alreadyInSimulation,
+      })
+    ) {
+      return this._baseApplyAsync(name, args, options, callback);
+    }
+
+    let stubPromiseResolver: any;
+    let serverPromiseResolver: any;
+    
+    const stubPromise = new Promise((r) => (stubPromiseResolver = r));
+    const serverPromise = new Promise((r) => (serverPromiseResolver = r));
+
+    return this._queueFunction(
+      (resolve, reject) => {
+        let finished = false;
+
+        setTimeout(() => {
+          const applyAsyncPromise = this._baseApplyAsync(name, args, options, callback);
+          stubPromiseResolver(applyAsyncPromise.stubPromise);
+          serverPromiseResolver(applyAsyncPromise.serverPromise);
+
+          applyAsyncPromise.stubPromise
+            .catch(() => {})
+            .finally(() => {
+              finished = true;
+            });
+
+          applyAsyncPromise
+            .then((result: any) => resolve(result))
+            .catch((err: any) => reject(err));
+
+          serverPromise.catch(() => {});
+        }, 0);
+
+        setTimeout(() => {
+          if (!finished) {
+            console.warn(`Method stub (${name}) took too long and could cause unexpected problems.`);
+          }
+        }, 0);
+      },
+      {
+        stubPromise,
+        serverPromise,
+      }
+    );
+  }
+
+  protected _baseApplyAsync(name: string, args: any[], options?: any, callback: any = null): any {
     const stubPromise = this._applyAsyncStubInvocation(name, args, options);
     const promise: any = this._applyAsync({ name, args, options, callback, stubPromise });
     
@@ -643,6 +784,8 @@ export class Connection {
     }
   }
 
+  // --- Network ---
+
   public _unsubscribeAll(): void {
     Object.values(this._subscriptions).forEach((sub: any) => {
       if (sub.name !== 'meteor_autoupdate_clientVersions') {
@@ -651,7 +794,26 @@ export class Connection {
     });
   }
 
-  public _send(obj: any, isQueued: boolean = false): void {
+  public _send(obj: any, shouldQueue: boolean = false): void {
+    if (this._stream._neverQueued) {
+      return this._baseSend(obj);
+    }
+
+    if (!this._queueSend && !shouldQueue) {
+      return this._baseSend(obj);
+    }
+
+    this._queueSend = false;
+    this._queueFunction((resolve) => {
+      try {
+        this._baseSend(obj);
+      } finally {
+        resolve(undefined);
+      }
+    });
+  }
+
+  protected _baseSend(obj: any): void {
     this._stream.send(DDPCommon.stringifyDDP(obj));
   }
 
@@ -689,6 +851,8 @@ export class Connection {
     this._userId = userId;
     if (this._userIdDeps) this._userIdDeps.changed();
   }
+
+  // --- Flush & Quiescence ---
 
   public _waitingForQuiescence(): boolean {
     return (
@@ -827,6 +991,19 @@ export class Connection {
   }
 
   public _sendOutstandingMethodBlocksMessages(oldOutstandingMethodBlocks: OutstandingMethodBlock[]): void {
+    if (this._stream._neverQueued) {
+      return this._baseSendOutstandingMethodBlocksMessages(oldOutstandingMethodBlocks);
+    }
+    this._queueFunction((resolve) => {
+      try {
+        this._baseSendOutstandingMethodBlocksMessages(oldOutstandingMethodBlocks);
+      } finally {
+        resolve(undefined);
+      }
+    });
+  }
+
+  protected _baseSendOutstandingMethodBlocksMessages(oldOutstandingMethodBlocks: OutstandingMethodBlock[]): void {
     if (oldOutstandingMethodBlocks.length === 0) return;
 
     if (this._outstandingMethodBlocks.length === 0) {
@@ -865,6 +1042,9 @@ export class Connection {
   }
 
   public _readyToMigrate(): boolean {
+    if (this._queueSize > 0) {
+      return false;
+    }
     return Object.keys(this._methodInvokers).length === 0;
   }
 

@@ -2,22 +2,32 @@ import { Cursor } from './cursor.ts';
 import { IdMap } from './id-map.ts';
 import { ObserveQueue } from './observe-queue.ts';
 import { DiffSequence } from 'meteor/diff-sequence'; // Adjust to your ported path
-import { Matcher } from './matcher.ts'; // Note: Your Matcher code goes here
+import { isPlainObject, Matcher } from './matcher.ts'; // Note: Your Matcher code goes here
 import { Sorter } from './sorter.ts'; // Note: Your Sorter code goes here
 import { modify } from './modifiers.ts'; // Note: Extracted from LocalCollection._modify
+import type { MongoID } from 'meteor/mongo-id';
+import { Tracker } from 'meteor/tracker';
+import { EJSON } from 'meteor/ejson';
 
 const generateId = () => Math.random().toString(36).substring(2, 15);
+const hasOwn = Object.prototype.hasOwnProperty;
 
-export class LocalCollection {
+type Doc = { _id: string | MongoID.ObjectID;[key: string]: any };
+type Transform<TDoc, TDocTransformed> = {
+  (doc: TDoc): TDocTransformed;
+  __wrappedTransform__?: boolean;
+};
+
+export class LocalCollection<TDoc extends Doc> {
   public name: string | null;
-  public _docs: IdMap;
+  public _docs: IdMap<TDoc>;
   public _observeQueue: ObserveQueue;
   public queries: Record<string, any>;
   public next_qid: number = 1;
   public paused: boolean = false;
-  
-  private _savedOriginals: IdMap | null = null;
-  
+
+  private _savedOriginals: IdMap<TDoc> | null = null;
+
   // Inject dependencies for cursor execution
   public Matcher = Matcher;
   public Sorter = Sorter;
@@ -29,12 +39,62 @@ export class LocalCollection {
     this.queries = Object.create(null);
   }
 
-  find(selector: any = {}, options: any = {}): Cursor {
+  static wrapTransform<TDoc extends Doc, TDocTransformed extends Partial<Doc>>(transform: (doc: NoInfer<TDoc>) => TDocTransformed, collection?: NoInfer<LocalCollection<TDoc>> | null | undefined): ((doc: TDoc) => TDocTransformed);
+  static wrapTransform<TDoc extends Doc>(transform: null | undefined): null;
+  static wrapTransform<TDoc extends Doc>(transform: Transform<TDoc, undefined | false | null | true|number| string | RegExp | MongoID.ObjectID | Array<any> | Date | ((...args: any[]) => any)>): Transform<TDoc, never>;
+  static wrapTransform<TDoc extends Doc, TDocTransformed extends Partial<Doc>>(transform: Transform<TDoc, TDocTransformed> | null | undefined): ((doc: TDoc) => TDocTransformed) | null {
+    if (!transform) {
+      return null;
+    }
+
+    // No need to doubly-wrap transforms.
+    if (transform.__wrappedTransform__) {
+      return transform;
+    }
+
+    const wrapped = (doc: TDoc) => {
+      if (!hasOwn.call(doc, '_id')) {
+        // XXX do we ever have a transform on the oplog's collection? because that
+        // collection has no _id.
+        throw new Error('can only transform documents with _id');
+      }
+
+      const id = doc._id;
+
+      // XXX consider making tracker a weak dependency and checking
+      // Package.tracker here
+      const transformed = Tracker.nonreactive(() => transform(doc));
+
+      if (!isPlainObject(transformed)) {
+        throw new Error('transform must return object');
+      }
+
+      if (hasOwn.call(transformed, '_id')) {
+        if (!EJSON.equals(transformed._id, id)) {
+          throw new Error('transformed document can\'t have different _id');
+        }
+      } else {
+        transformed._id = id;
+      }
+
+      return transformed;
+    };
+
+    wrapped.__wrappedTransform__ = true;
+
+    return wrapped;
+  }
+
+  find(selector: any = {}, options: any = {}): Cursor<TDoc> {
     return new Cursor(this, selector, options);
   }
 
   findOne(selector: any = {}, options: any = {}) {
     return this.find(selector, { ...options, limit: 1 }).fetch()[0];
+  }
+
+  findOneAsync(selector: any = {}, options: any = {}): Promise<any> {
+    return Promise.resolve(this.findOne(selector, options));
   }
 
   insert(doc: any): string {
@@ -70,7 +130,7 @@ export class LocalCollection {
 
     queriesToRecompute.forEach(qid => this._recomputeResults(this.queries[qid]));
     this._observeQueue.drain();
-    
+
     return id;
   }
 
@@ -81,7 +141,7 @@ export class LocalCollection {
   update(selector: any, modifier: any, options: any = {}): any {
     const matcher = new this.Matcher(selector);
     let updateCount = 0;
-    
+
     const docsToUpdate = Array.from(this._docs.entries())
       .filter(([_id, doc]) => matcher.documentMatches(doc).result)
       .map(([id, doc]) => ({ id, doc }));
@@ -89,13 +149,13 @@ export class LocalCollection {
     for (const { id, doc } of docsToUpdate) {
       this._saveOriginal(id, doc);
       const oldDoc = structuredClone(doc);
-      
-      modify(doc, modifier, { isInsert: false }); 
-      
+
+      modify(doc, modifier, { isInsert: false });
+
       // Notify Observers
       for (const query of Object.values(this.queries)) {
         if (query.dirty) continue;
-        
+
         const before = matcher.documentMatches(oldDoc).result;
         const after = query.matcher.documentMatches(doc).result;
 
@@ -106,11 +166,12 @@ export class LocalCollection {
           if (query.ordered) query.results = query.results.filter((d: any) => d._id !== id);
           else query.results.delete(id);
         } else if (!before && after) {
-          const fields = structuredClone(doc); delete fields._id;
+          const { _id, ...rest } = doc;
+          const fields = structuredClone(rest);
           if (query.ordered) { query.addedBefore(id, fields, null); query.results.push(doc); }
           else { query.added(id, fields); query.results.set(id, doc); }
         } else if (before && after) {
-          query.changed(id, doc); 
+          query.changed(id, doc);
         }
       }
 
@@ -123,7 +184,7 @@ export class LocalCollection {
     let insertedId;
     if (updateCount === 0 && options.upsert) {
       const newDoc: any = { _id: options.insertedId || generateId() };
-      
+
       // Shallow extraction of simple equality fields from the selector
       if (selector && typeof selector === 'object') {
         for (const key of Object.keys(selector)) {
@@ -152,8 +213,16 @@ export class LocalCollection {
     return updateCount;
   }
 
+  updateAsync(selector: any, modifier: any, options: any = {}): Promise<{ numberAffected: number; insertedId?: string }> {
+    return Promise.resolve(this.update(selector, modifier, options));
+  }
+
   upsert(selector: any, modifier: any, options: any = {}): { numberAffected: number; insertedId?: string } {
     return this.update(selector, modifier, { ...options, upsert: true, _returnObject: true });
+  }
+
+  upsertAsync(selector: any, modifier: any, options: any = {}): Promise<{ numberAffected: number; insertedId?: string }> {
+    return Promise.resolve(this.upsert(selector, modifier, options));
   }
 
   remove(selector: any): number {
@@ -173,7 +242,7 @@ export class LocalCollection {
     for (const id of removeIds) {
       const doc = this._docs.get(id);
       this._saveOriginal(id, doc);
-      
+
       for (const query of Object.values(this.queries)) {
         if (query.dirty) continue;
         if (query.matcher.documentMatches(doc).result) {
@@ -191,6 +260,10 @@ export class LocalCollection {
 
     this._observeQueue.drain();
     return removeIds.length;
+  }
+
+  removeAsync(selector: any): Promise<number> {
+    return Promise.resolve(this.remove(selector));
   }
 
   // --- Observation Latency Compensation --- //
@@ -241,7 +314,7 @@ export class LocalCollection {
       query.dirty = true;
       return;
     }
-    
+
     if (!oldResults) oldResults = query.results;
     query.results = query.cursor._getRawObjects({ ordered: query.ordered });
     DiffSequence.diffQueryChanges(query.ordered, oldResults, query.results, query);

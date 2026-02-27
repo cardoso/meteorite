@@ -9,6 +9,7 @@ export type StreamStatus = {
   retryCount: number;
   retryTime?: number;
   reason?: Error | string;
+  fake?: boolean;
 };
 
 export type StreamClientOptions = {
@@ -16,6 +17,8 @@ export type StreamClientOptions = {
   connectTimeoutMs?: number;
   ConnectionError?: new (message: string) => Error;
   _dontPrintErrors?: boolean;
+  headers?: Record<string, string>;
+  _sockJsOptions?: Record<string, any>;
 };
 
 export type ReconnectOptions = {
@@ -31,7 +34,7 @@ export type DisconnectOptions = {
 export abstract class StreamClientCommon {
   protected options: StreamClientOptions;
   protected ConnectionError: new (message: string) => Error;
-  
+
   protected CONNECT_TIMEOUT: number;
   protected eventCallbacks: Record<string, Array<(...args: any[]) => void>>;
   protected _forcedToDisconnect: boolean;
