@@ -17,11 +17,10 @@ type TestDoc = {
 };
 
 describe("minimongo - wrapTransform", () => {
-  const wrap = LocalCollection.wrapTransform;
 
   it("returns falsy when transforming no function", () => {
-    expect(wrap(undefined)).toBeFalsy();
-    expect(wrap(null as any)).toBeFalsy();
+    expect(LocalCollection.wrapTransform(undefined)).toBeFalsy();
+    expect(LocalCollection.wrapTransform(null)).toBeFalsy();
   });
 
   it("allows transformations that do not change the ID", () => {
@@ -33,7 +32,7 @@ describe("minimongo - wrapTransform", () => {
       return newDoc;
     };
 
-    const transformed = wrap(validTransform)({ _id: "asdf", x: 54 });
+    const transformed = LocalCollection.wrapTransform(validTransform)({ _id: "asdf", x: 54 });
 
     expect(Object.keys(transformed)).toEqual(["_id", "y", "z"]);
     expect(transformed.y).toBe(42);
@@ -45,7 +44,7 @@ describe("minimongo - wrapTransform", () => {
     const oid1 = new MongoID.ObjectID();
     const oid2 = new MongoID.ObjectID(oid1.toHexString());
 
-    const result = wrap(() => ({ _id: oid2 }))({ _id: oid1 });
+    const result = LocalCollection.wrapTransform(() => ({ _id: oid2 }))({ _id: oid1 });
     expect(result).toEqual({ _id: oid2 });
   });
 
@@ -54,14 +53,14 @@ describe("minimongo - wrapTransform", () => {
     27, [123], /adsf/, new Date(), () => { }, undefined,
   ])("throws error if transform function does not return an object %s", (invalidValue) => {
 
-    const wrapped = wrap(() => invalidValue);
+    const wrapped = LocalCollection.wrapTransform(() => invalidValue);
     expect(() => {
       wrapped({ _id: "asdf" });
     }).toThrow(/transform must return object/);
   });
 
   it("throws error if transform changes the _id", () => {
-    const wrapped = wrap((doc: TestDoc) => {
+    const wrapped = LocalCollection.wrapTransform((doc: TestDoc) => {
       return { ...doc, _id: "x" };
     });
 
@@ -71,7 +70,7 @@ describe("minimongo - wrapTransform", () => {
   });
 
   it("allows transformations that remove the _id", () => {
-    const result = wrap(({ _id, ...doc }: TestDoc) => {
+    const result = LocalCollection.wrapTransform(({ _id, ...doc }: TestDoc) => {
       return { ...doc };
     })({ _id: "a", x: 2 });
 
@@ -87,7 +86,7 @@ describe("minimongo - wrapTransform", () => {
     // Tracker.autorun provides the reactive context
     const computation = Tracker.autorun(() => {
       expect(Tracker.active).toBe(true);
-      wrap(unwrapped)({ _id: "xxx" });
+      LocalCollection.wrapTransform(unwrapped)({ _id: "xxx" });
     });
 
     computation.stop();

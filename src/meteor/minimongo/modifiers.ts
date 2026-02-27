@@ -37,7 +37,7 @@ function assertHasValidFieldNames(doc: any) {
   }
 }
 
-function findModTarget(doc: any, keyparts: (string | number)[], options: { noCreate?: boolean; forbidArray?: boolean; arrayIndices?: number[] } = {}) {
+function findModTarget(doc: any, keyparts: (string | number)[], options: { noCreate?: boolean; forbidArray?: boolean; arrayIndices?: number[] | undefined } = {}) {
   let usedArrayIndex = false;
 
   for (let i = 0; i < keyparts.length; i++) {

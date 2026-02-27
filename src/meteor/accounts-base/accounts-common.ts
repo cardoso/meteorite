@@ -36,12 +36,12 @@ class LoginCancelledError extends Error {
     constructor(message?: string | undefined) {
         super(message);
     }
-};
+}
 
 export class AccountsCommon {
     protected _options: AccountsConfigOptions;
-    public connection?: Connection;
-    public users: Mongo.Collection<Meteor.User>;
+    protected _connection?: Connection;
+    protected _users?: Mongo.Collection<Meteor.User>;
 
     protected _onLoginHook: Hook;
     protected _onLoginFailureHook: Hook;
@@ -57,24 +57,52 @@ export class AccountsCommon {
         }
 
         this._options = options;
-        this._initConnection(options);
-        this.users = this._initializeCollection(options);
 
         this._onLoginHook = new Hook({ debugPrintExceptions: 'onLogin callback' });
         this._onLoginFailureHook = new Hook({ debugPrintExceptions: 'onLoginFailure callback' });
         this._onLogoutHook = new Hook({ debugPrintExceptions: 'onLogout callback' });
     }
 
-    protected _initializeCollection(options: AccountsConfigOptions): Mongo.Collection<Meteor.User> {
-        if (options.collection instanceof Mongo.Collection) {
-            return options.collection as Mongo.Collection<Meteor.User>;
+    // Lazy initialization of the DDP connection avoids the TDZ crash
+    public get connection() {
+        if (!this._connection) {
+            let conn;
+            if (this._options.connection) {
+                conn = this._options.connection;
+            } else if (this._options.ddpUrl) {
+                conn = DDP.connect(this._options.ddpUrl);
+            } else {
+                conn = Meteor.connection;
+            }
+            this._connection = conn;
+
+            return conn;
         }
 
-        const collectionName = typeof options.collection === 'string' ? options.collection : 'users';
+        return this._connection;
+    }
 
-        return new Mongo.Collection<Meteor.User>(collectionName, {
-            connection: this.connection,
-        });
+    public set connection(val: Connection) {
+        this._connection = val;
+    }
+
+    // Lazy initialization of the user collection
+    public get users(): Mongo.Collection<Meteor.User> {
+        if (!this._users) {
+            if (this._options.collection instanceof Mongo.Collection) {
+                this._users = this._options.collection as Mongo.Collection<Meteor.User>;
+            } else {
+                const collectionName = typeof this._options.collection === 'string' ? this._options.collection : 'users';
+                this._users = new Mongo.Collection<Meteor.User>(collectionName, {
+                    connection: this.connection,
+                });
+            }
+        }
+        return this._users;
+    }
+
+    public set users(val: Mongo.Collection<Meteor.User>) {
+        this._users = val;
     }
 
     public userId(): string | null {
@@ -131,8 +159,17 @@ export class AccountsCommon {
             }
         }
 
-        if (options.collection && options.collection !== this.users) {
-            this.users = this._initializeCollection(options);
+        if (options.collection) {
+            if (options.collection instanceof Mongo.Collection) {
+                this._users = options.collection as Mongo.Collection<Meteor.User>;
+            } else if (typeof options.collection === 'string') {
+                const currentName = this._users ? (this._users as any)._name : 'users';
+                if (options.collection !== currentName) {
+                    this._users = new Mongo.Collection<Meteor.User>(options.collection, {
+                        connection: this.connection,
+                    });
+                }
+            }
         }
     }
 
@@ -148,16 +185,6 @@ export class AccountsCommon {
 
     public onLogout(func: (info: any) => void) {
         return this._onLogoutHook.register(func);
-    }
-
-    protected _initConnection(options: AccountsConfigOptions): void {
-        if (options.connection) {
-            this.connection = options.connection;
-        } else if (options.ddpUrl) {
-            this.connection = DDP.connect(options.ddpUrl);
-        } else {
-            this.connection = Meteor.connection;
-        }
     }
 
     protected _getTokenLifetimeMs(): number {

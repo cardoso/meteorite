@@ -11,7 +11,7 @@ export type ProviderCallback = (
 ) => MigrationResult;
 
 export type Provider = {
-	name?: string;
+	name?: string | undefined;
 	callback: ProviderCallback;
 };
 

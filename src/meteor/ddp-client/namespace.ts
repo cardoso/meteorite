@@ -1,67 +1,52 @@
 import { DDPCommon } from 'meteor/ddp-common';
 import { Meteor } from 'meteor/meteor';
 import { Hook } from 'meteor/callback-hook';
-import { Connection } from './livedata-connection.ts';
 
-// This array allows the `_allSubscriptionsReady` method below to keep track
-// of whether all data is ready.
-const allConnections: Connection[] = [];
+// Export an array to track connections for _allSubscriptionsReady
+export const allConnections: any[] = [];
 
-export type DDPNamespace = {
-    _CurrentMethodInvocation: any;
-    _CurrentPublicationInvocation: any;
-    _CurrentInvocation: any;
-    _CurrentCallAsyncInvocation: any;
-    ConnectionError: new (message: string) => Error;
-    ForcedReconnectError: new (message?: string) => Error;
-    randomStream: (name?: string) => any;
-    connect: (url: string, options?: Record<string, any>) => Connection;
-    onReconnect: (callback: (connection: Connection) => void) => any;
-    _allSubscriptionsReady: () => boolean;
-    _reconnectHook: any;
-};
-
-export const DDP: DDPNamespace = {} as DDPNamespace;
-
-DDP._CurrentMethodInvocation = new Meteor.EnvironmentVariable();
-DDP._CurrentPublicationInvocation = new Meteor.EnvironmentVariable();
-DDP._CurrentInvocation = DDP._CurrentMethodInvocation;
-DDP._CurrentCallAsyncInvocation = new Meteor.EnvironmentVariable();
-
-
-DDP.ConnectionError = class ConnectionError extends Error {
+export const DDP: any = {
+  ConnectionError: class ConnectionError extends Error {
     constructor(message: string) {
-        super(message);
-        this.name = 'DDP.ConnectionError';
+      super(message);
+      this.name = 'DDP.ConnectionError';
     }
-}
-
-DDP.ForcedReconnectError = class ForcedReconnectError extends Error {
+  },
+  ForcedReconnectError: class ForcedReconnectError extends Error {
     constructor(message?: string) {
-        super(message);
-        this.name = 'DDP.ForcedReconnectError';
+      super(message);
+      this.name = 'DDP.ForcedReconnectError';
     }
-}
-
-DDP.randomStream = (name?: string) => {
-    const scope = DDP._CurrentMethodInvocation.get();
+  },
+  _reconnectHook: new Hook({ bindEnvironment: false }),
+  onReconnect: (callback: any) => DDP._reconnectHook.register(callback),
+  _allSubscriptionsReady: () => allConnections.every((conn) => Object.values(conn._subscriptions).every((sub: any) => sub.ready)),
+  
+  randomStream: (name?: string) => {
+    const scope = DDP._CurrentMethodInvocation?.get();
     return DDPCommon.RandomStream.get(scope, name);
+  }
 };
 
-DDP.connect = (url: string, options?: Record<string, any>): Connection => {
-    const ret = new Connection(url, options);
-    allConnections.push(ret);
-    return ret;
+// LAZY INITIALIZATION: Fixes the "Cannot access 'Meteor' before initialization" error
+const lazyEnvVar = (key: string) => {
+  let instance: any;
+  Object.defineProperty(DDP, key, {
+    get() {
+      if (!instance) instance = new Meteor.EnvironmentVariable();
+      return instance;
+    },
+    set(val) { instance = val; },
+    enumerable: true,
+    configurable: true
+  });
 };
 
-DDP._reconnectHook = new Hook({ bindEnvironment: false });
+lazyEnvVar('_CurrentMethodInvocation');
+lazyEnvVar('_CurrentPublicationInvocation');
+lazyEnvVar('_CurrentCallAsyncInvocation');
 
-DDP.onReconnect = (callback: (connection: Connection) => void) => {
-    return DDP._reconnectHook.register(callback);
-};
-
-DDP._allSubscriptionsReady = (): boolean => {
-    return allConnections.every((conn: Connection) => {
-        return Object.values(conn._subscriptions).every((sub: any) => sub.ready);
-    });
-};
+Object.defineProperty(DDP, '_CurrentInvocation', {
+  get() { return DDP._CurrentMethodInvocation; },
+  set(val) { DDP._CurrentMethodInvocation = val; }
+});

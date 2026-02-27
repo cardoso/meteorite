@@ -3,8 +3,6 @@ import { Tracker } from 'meteor/tracker';
 import { ReactiveVar } from 'meteor/reactive-var';
 import { DDP } from 'meteor/ddp-client';
 import { AccountsCommon, type AccountsConfigOptions } from './accounts-common.ts';
-import type { AccountsOAuth } from 'meteor/accounts-oauth';
-import type { ServiceConfiguration } from 'meteor/service-configuration';
 
 export type PageLoadLoginAttemptInfo = {
   type: string;
@@ -35,19 +33,22 @@ export class AccountsClient extends AccountsCommon {
   public LOGIN_TOKEN_EXPIRES_KEY!: string;
   public USER_ID_KEY!: string;
 
-  public oauth?: typeof AccountsOAuth;
-  public loginServiceConfiguration?: typeof ServiceConfiguration.configurations;
-  public ConfigError?: typeof ServiceConfiguration.ConfigError;
-
   constructor(options: AccountsConfigOptions = {}) {
     super(options);
 
-    this._loginServicesHandle = this.connection?.subscribe("meteor.loginServiceConfiguration");
     this.savedHash = window.location.hash;
-
     this._initUrlMatching();
     this.initStorageLocation(options);
-    this._initLocalStorage();
+    this._initLocalStorageKeys();
+
+    // MACROTASK DEFERRAL:
+    // We defer DDP interactions and polling to the macrotask queue using setTimeout.
+    // This safely avoids ESM Temporal Dead Zone (TDZ) errors by ensuring the 
+    // entire module graph is evaluated before we attempt to read `Meteor.connection`.
+    setTimeout(() => {
+      this._loginServicesHandle = this.connection?.subscribe("meteor.loginServiceConfiguration");
+      this._initLocalStorageState();
+    }, 0);
   }
 
   public initStorageLocation(options?: AccountsConfigOptions): void {
@@ -350,11 +351,13 @@ export class AccountsClient extends AccountsCommon {
     }
   }
 
-  private _initLocalStorage(): void {
+  private _initLocalStorageKeys(): void {
     this.LOGIN_TOKEN_KEY = "Meteor.loginToken";
     this.LOGIN_TOKEN_EXPIRES_KEY = "Meteor.loginTokenExpires";
     this.USER_ID_KEY = "Meteor.userId";
+  }
 
+  private _initLocalStorageState(): void {
     if (this._autoLoginEnabled) {
       this._unstoreLoginTokenIfExpiresSoon();
       const token = this._storedLoginToken();

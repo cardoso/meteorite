@@ -1,7 +1,7 @@
 export class MeteorError extends Error {
   public error: string | number;
-  public reason?: string;
-  public details?: string;
+  public reason?: string | undefined;
+  public details?: string | undefined;
   public errorType = 'Meteor.Error';
   public isClientSafe = true;
 

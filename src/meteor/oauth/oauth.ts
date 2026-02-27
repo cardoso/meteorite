@@ -200,7 +200,7 @@ export const handleCredentialSecret = (credentialToken: string, secret: string):
 /**
  * Retrieves the credential secret (used by accounts-oauth to call the DDP login method).
  */
-export const retrieveCredentialSecret = (credentialToken: string): string | null => {
+export const _retrieveCredentialSecret = (credentialToken: string): string | null => {
   let secret = credentialSecrets[credentialToken];
   
   if (!secret) {

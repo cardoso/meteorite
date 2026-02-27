@@ -89,7 +89,7 @@ export const idStringify = (id: any): string => {
   }
 };
 
-export const idParse = (id: string) => {
+export function idParse(id: string) {
   const firstChar = id.charAt(0);
   if (id === '') {
     return id;
@@ -104,4 +104,4 @@ export const idParse = (id: string) => {
   } else {
     return id;
   }
-};
+}

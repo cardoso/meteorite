@@ -2,7 +2,7 @@
 
 export type ComputationFunction = (c: Computation) => unknown;
 export type OnErrorFunction = (error: unknown) => void;
-export type FlushOptions = { finishSynchronously?: boolean; _throwFirstError?: boolean; throwFirstError?: boolean };
+export type FlushOptions = { finishSynchronously?: boolean | undefined; _throwFirstError?: boolean | undefined; throwFirstError?: boolean | undefined };
 
 // Module-level state tracking
 export let active = false;
@@ -54,9 +54,9 @@ export class Computation {
   public _onStopCallbacks: Array<(c: Computation) => void>;
   public _parent: Computation | null;
   public _func: ComputationFunction;
-  public _onError?: OnErrorFunction;
+  public _onError?: OnErrorFunction | undefined;
   public _recomputing: boolean;
-  public firstRunPromise?: Promise<unknown>;
+  public firstRunPromise?: Promise<unknown> | undefined;
 
   constructor(f: ComputationFunction, parent: Computation | null, onError?: OnErrorFunction) {
     if (!constructingComputation) {

@@ -13,7 +13,7 @@ export class MethodInvoker {
   public sentMessage: boolean;
   public noRetry: boolean;
 
-  protected _callback?: (err?: any, result?: any) => void;
+  protected _callback?: ((err?: any, result?: any) => void) | undefined;
   protected _connection: any;
   public _message: Record<string, any>;
   protected _onResultReceived: (err?: any, result?: any) => void;

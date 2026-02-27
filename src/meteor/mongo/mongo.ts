@@ -5,7 +5,7 @@ import { MongoID } from "meteor/mongo-id";
 import { Meteor } from "meteor/meteor";
 import type { CursorOptions } from "meteor/minimongo";
 
-export type Document = { _id: string; [key: string]: any };
+export type Document = { _id?: string; [key: string]: any };
 export type Selector = Partial<Document> | string;
 export type Modifier = { $set?: Record<string, any>; $unset?: Record<string, any>;[key: string]: any };
 

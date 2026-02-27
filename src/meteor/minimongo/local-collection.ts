@@ -12,7 +12,7 @@ import { EJSON } from 'meteor/ejson';
 const generateId = () => Math.random().toString(36).substring(2, 15);
 const hasOwn = Object.prototype.hasOwnProperty;
 
-type Doc = { _id: string | MongoID.ObjectID; [key: string]: any };
+type Doc = { _id?: string | MongoID.ObjectID | undefined;[key: string]: any };
 type Transform<TDoc, TDocTransformed> = {
   (doc: TDoc): TDocTransformed;
   __wrappedTransform__?: boolean;
@@ -39,9 +39,10 @@ export class LocalCollection<TDoc extends Doc> {
     this.queries = Object.create(null);
   }
 
-  static wrapTransform<TDoc extends Doc, TDocTransformed extends Partial<Doc>>(transform: (doc: NoInfer<TDoc>) => TDocTransformed, collection?: NoInfer<LocalCollection<TDoc>> | null | undefined): ((doc: TDoc) => TDocTransformed);
-  static wrapTransform<TDoc extends Doc>(transform: null | undefined): null;
-  static wrapTransform<TDoc extends Doc>(transform: Transform<TDoc, undefined | false | null | true|number| string | RegExp | MongoID.ObjectID | Array<any> | Date | ((...args: any[]) => any)>): Transform<TDoc, never>;
+
+  static wrapTransform(transform: null | undefined): null;
+  static wrapTransform<T>(transform: () => T): ((doc: any) => T);
+  static wrapTransform<TDoc extends Doc, TDocTransformed extends Partial<Doc>>(transform: Transform<TDoc, TDocTransformed>): ((doc: TDoc) => TDocTransformed);
   static wrapTransform<TDoc extends Doc, TDocTransformed extends Partial<Doc>>(transform: Transform<TDoc, TDocTransformed> | null | undefined): ((doc: TDoc) => TDocTransformed) | null {
     if (!transform) {
       return null;

@@ -11,11 +11,11 @@ export type CursorOptions<TDoc, TDocTransformed extends TDoc> = {
     skip?: number;
     limit?: number;
     reactive?: boolean;
-    transform?: ((doc: TDoc) => TDocTransformed) | null;
+    transform?: ((doc: TDoc) => TDocTransformed) | null | undefined;
 }
 
 
-export class Cursor<TDoc extends { _id: string | MongoID.ObjectID }, TDocTransformed extends TDoc = TDoc> {
+export class Cursor<TDoc extends { _id?: string | MongoID.ObjectID | undefined }, TDocTransformed extends TDoc = TDoc> {
     private collection: LocalCollection<TDoc>;
     private matcher: Matcher;
     private sorter: Sorter | null = null;
