@@ -13,15 +13,15 @@
   },
   "devDependencies": {
     "typescript": "~5.9.3",
-    "vite": "^8.0.0-beta.15",
-    "vitest": "^4.1.0-beta.4",
-    "@vitest/browser-playwright": "^4.1.0-beta.4"
+    "vite": "^8.0.0-beta.16",
+    "vitest": "^4.1.0-beta.5",
+    "@vitest/browser-playwright": "^4.1.0-beta.5"
   },
   "pnpm": {
     "overrides": {
-      "vite": "^8.0.0-beta.15",
-      "vitest": "^4.1.0-beta.4",
-      "@vitest/browser-playwright": "^4.1.0-beta.4"
+      "vite": "^8.0.0-beta.16",
+      "vitest": "^4.1.0-beta.5",
+      "@vitest/browser-playwright": "^4.1.0-beta.5"
     }
   },
   "volta": {
