@@ -6,6 +6,7 @@ import { AsynchronousQueue, SynchronousQueue } from './queues';
 import { startup } from './startup';
 import type { Connection } from 'meteor/ddp-client';
 import { Accounts } from 'meteor/accounts-base';
+import { withLocalStorage } from 'meteor/localstorage';
 
 export const refresh = () => { };
 let _connection: Connection | null = null;
@@ -27,7 +28,7 @@ export declare namespace Meteor {
   type Error = MeteorError;
 }
 
-export const Meteor = {
+export const Meteor = withLocalStorage({
   // Hardcoded environment flags for standard client builds
 
 
@@ -87,4 +88,4 @@ export const Meteor = {
 
   // Stubs for safely removing nodejs/server specific features
   _noYieldsAllowed: (f: Function) => f(),
-};
+});
