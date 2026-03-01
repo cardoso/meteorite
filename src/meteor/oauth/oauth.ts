@@ -19,7 +19,7 @@ export type LaunchLoginOptions = {
   loginService: string;
   loginStyle: LoginStyle;
   loginUrl: string;
-  credentialRequestCompleteCallback: (credentialToken: string) => void;
+  credentialRequestCompleteCallback?: ((credentialToken: string) => void) | undefined;
   credentialToken: string;
   popupOptions?: PopupDimensions;
 };
@@ -171,7 +171,7 @@ export const launchLogin = (options: LaunchLoginOptions): void => {
   if (options.loginStyle === 'popup') {
     showPopup(
       options.loginUrl,
-      () => options.credentialRequestCompleteCallback(options.credentialToken),
+      () => options.credentialRequestCompleteCallback?.(options.credentialToken),
       options.popupOptions
     );
   } else if (options.loginStyle === 'redirect') {
@@ -212,4 +212,61 @@ export const _retrieveCredentialSecret = (credentialToken: string): string | nul
   }
   
   return secret || null;
+};
+
+export const _stateParam = (
+  loginStyle: LoginStyle,
+  credentialToken: string,
+  redirectUrl?: string,
+  setRedirectUrlWhenLoginStyleIsPopup?: boolean
+): string => {
+  const state: Record<string, unknown> = {
+    loginStyle,
+    credentialToken,
+    isCordova: false, // Hardcoded to false for modern web
+  };
+
+  if (loginStyle === 'redirect' || (setRedirectUrlWhenLoginStyleIsPopup && loginStyle === 'popup')) {
+    state.redirectUrl = redirectUrl || window.location.href;
+  }
+
+  // Use native btoa to encode the state object, matching Meteor's Base64.encode
+  return btoa(JSON.stringify(state));
+};
+
+export type AbsoluteUrlOptions = {
+  rootUrl?: string;
+  [key: string]: unknown;
+};
+
+/**
+ * Generates the redirect URI for the OAuth provider to return to.
+ * Replaces Meteor's `OAuth._redirectUri` and its internal URL constructors.
+ * * @param serviceName The name of the oauth service (e.g., 'meteor-developer', 'google')
+ * @param config The service configuration (mostly unused in pure web flows, kept for signature compatibility)
+ * @param params Additional query parameters to append
+ * @param absoluteUrlOptions Options to override the base URL
+ */
+export const _redirectUri = (
+  serviceName: string,
+  _config?: Record<string, unknown>,
+  params?: Record<string, string>,
+  absoluteUrlOptions?: AbsoluteUrlOptions
+): string => {
+  // Rely on the standard browser origin unless a specific root URL is provided
+  const baseUrl = absoluteUrlOptions?.rootUrl || window.location.origin;
+  
+  // Construct the standardized Meteor OAuth callback path
+  const url = new URL(`/_oauth/${serviceName}`, baseUrl);
+
+  if (params) {
+    Object.entries(params).forEach(([key, value]) => {
+      // Strip out legacy mobile parameters if they somehow get passed down
+      if (key !== 'cordova' && key !== 'android') {
+        url.searchParams.set(key, value);
+      }
+    });
+  }
+
+  return url.toString();
 };
