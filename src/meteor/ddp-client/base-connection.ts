@@ -34,7 +34,7 @@ export type OutstandingMethodBlock = {
 
 export class BaseConnection {
   public options: ConnectionOptions;
-  public onReconnect: (() => void) | null;
+  public onReconnect: (() => void) | null | undefined;
   public _stream: any;
   public _lastSessionId: string | null;
   public _versionSuggestion: string | null;
@@ -62,7 +62,7 @@ export class BaseConnection {
   public _bufferedWritesInterval: number;
   public _bufferedWritesMaxAge: number;
   public _subscriptions: Record<string, any>;
-  
+
   protected _userId: string | null;
   protected _userIdDeps: any;
   protected _heartbeat: any;
@@ -76,7 +76,7 @@ export class BaseConnection {
 
   constructor(url: string | object, options?: ConnectionOptions) {
     this.options = {
-      onConnected: () => {},
+      onConnected: () => { },
       onDDPVersionNegotiationFailure: (description: string) => {
         console.debug(description);
       },
@@ -155,10 +155,10 @@ export class BaseConnection {
 
     this._queue = this._queue.finally(() => {
       fn(resolveFn, rejectFn);
-      return promise.stubPromise?.catch(() => {});
+      return promise.stubPromise?.catch(() => { });
     });
 
-    promise.catch(() => {}).finally(() => {
+    promise.catch(() => { }).finally(() => {
       this._queueSize -= 1;
       if (this._queueSize === 0) this._maybeMigrate();
     });
@@ -171,8 +171,8 @@ export class BaseConnection {
   public createStoreMethods(name: string, wrappedStore: any): any {
     if (name in this._stores) return false;
     const store = Object.create(null);
-    const keysOfStore = ['update','beginUpdate','endUpdate','saveOriginals','retrieveOriginals','getDoc','_getCollection'];
-    
+    const keysOfStore = ['update', 'beginUpdate', 'endUpdate', 'saveOriginals', 'retrieveOriginals', 'getDoc', '_getCollection'];
+
     keysOfStore.forEach((method) => {
       store[method] = (...args: any[]) => {
         if (wrappedStore[method]) return wrappedStore[method](...args);
@@ -209,7 +209,7 @@ export class BaseConnection {
     let callbacks: Record<string, any> = Object.create(null);
     if (params.length) {
       const lastParam = params[params.length - 1];
-      if (typeof lastParam === 'function') { callbacks.onReady = params.pop(); } 
+      if (typeof lastParam === 'function') { callbacks.onReady = params.pop(); }
       else if (lastParam && [lastParam.onReady, lastParam.onError, lastParam.onStop].some(f => typeof f === "function")) {
         callbacks = params.pop();
       }
@@ -220,7 +220,7 @@ export class BaseConnection {
     let id: string;
     if (existing) {
       id = existing.id;
-      existing.inactive = false; 
+      existing.inactive = false;
       if (callbacks.onReady) {
         if (existing.ready) callbacks.onReady(); else existing.readyCallback = callbacks.onReady;
       }
@@ -339,9 +339,9 @@ export class BaseConnection {
         stubPromiseResolver(applyAsyncPromise.stubPromise);
         serverPromiseResolver(applyAsyncPromise.serverPromise);
 
-        applyAsyncPromise.stubPromise.catch(() => {});
+        applyAsyncPromise.stubPromise.catch(() => { });
         applyAsyncPromise.then((result: any) => resolve(result)).catch((err: any) => reject(err));
-        serverPromise.catch(() => {});
+        serverPromise.catch(() => { });
       }, 0);
     }, { stubPromise, serverPromise });
   }
@@ -349,7 +349,7 @@ export class BaseConnection {
   protected _baseApplyAsync(name: string, args?: any[] | undefined, options?: any, callback: any = null): any {
     const stubPromise = this._applyAsyncStubInvocation(name, args, options);
     const promise: any = this._applyAsync({ name, args, options, callback, stubPromise });
-    
+
     promise.stubPromise = stubPromise.then((o: any) => { if (o.exception) throw o.exception; return o.stubReturnValue; });
     promise.serverPromise = new Promise((resolve, reject) => promise.then(resolve).catch(reject));
     return promise;
@@ -365,7 +365,7 @@ export class BaseConnection {
         const currentContext = DDP._CurrentMethodInvocation._setNewContextAndGetCurrent(invocation);
         try {
           stubOptions.stubReturnValue = await stubInvocation();
-        } catch (e) { stubOptions.exception = e; } 
+        } catch (e) { stubOptions.exception = e; }
         finally { DDP._CurrentMethodInvocation._set(currentContext); }
       } catch (e) { stubOptions.exception = e; }
     }
@@ -451,11 +451,11 @@ export class BaseConnection {
     Object.entries(this._stores).forEach(([collection, store]) => {
       const originals = store.retrieveOriginals();
       if (!originals) return;
-      
+
       originals.forEach((doc: any, id: string) => {
         docsWritten.push({ collection, id });
         if (!this._serverDocuments[collection]) this._serverDocuments[collection] = new (globalThis as any).MongoIDMap();
-        
+
         const serverDoc = this._serverDocuments[collection].setDefault(id, Object.create(null));
         if (serverDoc.writtenByStubs) serverDoc.writtenByStubs[methodId] = true;
         else { serverDoc.document = doc; serverDoc.flushCallbacks = []; serverDoc.writtenByStubs = { [methodId]: true }; }
@@ -488,7 +488,7 @@ export class BaseConnection {
 
   public _waitingForQuiescence(): boolean { return Object.keys(this._subsBeingRevived).length > 0 || Object.keys(this._methodsBlockingQuiescence).length > 0; }
   protected _anyMethodsAreOutstanding(): boolean { return Object.values(this._methodInvokers).some((invoker) => !!invoker.sentMessage); }
-  
+
   protected _prepareBuffersToFlush(): Record<string, any[]> {
     if (this._bufferedWritesFlushHandle) { clearTimeout(this._bufferedWritesFlushHandle); this._bufferedWritesFlushHandle = null; }
     this._bufferedWritesFlushAt = null;

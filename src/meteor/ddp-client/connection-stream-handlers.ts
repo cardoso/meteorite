@@ -4,6 +4,33 @@ import type { MessageProcessorsInstance } from './message-processors.ts';
 
 export function StreamHandlersMixin<TBase extends Constructor<MessageProcessorsInstance>>(Base: TBase) {
   return class extends Base {
+    public _streamHandlers: {
+      onMessage: (raw_msg: string) => Promise<void>;
+      onReset: () => void;
+    };
+
+    constructor(...args: any[]) {
+      super(...args);
+
+      // Restore the legacy API surface for overrides like ddpOverREST
+      this._streamHandlers = {
+        onMessage: (raw_msg: string) => this.onMessage(raw_msg),
+        onReset: () => this.onReset(),
+      };
+
+      // Re-attach the stream event listeners that were dropped during the mixin refactor
+      if (this._stream) {
+        this._stream.on('message', (msg: string) => this._streamHandlers.onMessage(msg));
+        this._stream.on('reset', () => this._streamHandlers.onReset());
+        this._stream.on('disconnect', () => {
+          if (this._heartbeat) {
+            this._heartbeat.stop();
+            this._heartbeat = null;
+          }
+        });
+      }
+    }
+
     public async onMessage(raw_msg: string): Promise<void> {
       let msg: any;
       try {

@@ -1,5 +1,3 @@
-import { Meteor } from 'meteor/meteor';
-import { Tracker } from 'meteor/tracker';
 import { ReactiveVar } from 'meteor/reactive-var';
 import { DDP } from 'meteor/ddp-client';
 import { AccountsCommon, type AccountsConfigOptions } from './accounts-common.ts';
@@ -41,10 +39,6 @@ export class AccountsClient extends AccountsCommon {
     this.initStorageLocation(options);
     this._initLocalStorageKeys();
 
-    // MACROTASK DEFERRAL:
-    // We defer DDP interactions and polling to the macrotask queue using setTimeout.
-    // This safely avoids ESM Temporal Dead Zone (TDZ) errors by ensuring the 
-    // entire module graph is evaluated before we attempt to read `Meteor.connection`.
     setTimeout(() => {
       this._loginServicesHandle = this.connection?.subscribe("meteor.loginServiceConfiguration");
       this._initLocalStorageState();
@@ -91,12 +85,6 @@ export class AccountsClient extends AccountsCommon {
     return this._loginFuncs[funcName].apply(this, funcArgs);
   }
 
-  /**
-   * Same as `callLoginFunction` but accepts an arguments array which contains 
-   * all arguments for the login function.
-   * * @param funcName The name of the login function you want to call.
-   * @param funcArgs The arguments array for the login function.
-   */
   public applyLoginFunction(funcName: string, funcArgs: any[]): any {
     if (!this._loginFuncs[funcName]) {
       throw new Error(`${funcName} was not defined`);
@@ -251,14 +239,9 @@ export class AccountsClient extends AccountsCommon {
 
       this.makeClientLoggedIn(result.id, result.token, result.tokenExpires);
 
-      Tracker.autorun(async (computation) => {
-        const user = await Tracker.withComputation(computation, () => Meteor.user());
-        if (user) {
-          loginCallbacks({ loginDetails: result });
-          this._setLoggingIn(false);
-          computation.stop();
-        }
-      });
+      // RESOLVES THE DEADLOCK: Removed Tracker.autorun that waited for Meteor.user()
+      loginCallbacks({ loginDetails: result });
+      this._setLoggingIn(false);
     };
 
     if (!opts._suppressLoggingIn) {
@@ -338,7 +321,7 @@ export class AccountsClient extends AccountsCommon {
     this._lastLoginTokenWhenPolled = token;
   }
 
-  private _unstoreLoginToken(): void {
+  public _unstoreLoginToken(): void {
     this.storageLocation.removeItem(this.USER_ID_KEY);
     this.storageLocation.removeItem(this.LOGIN_TOKEN_KEY);
     this.storageLocation.removeItem(this.LOGIN_TOKEN_EXPIRES_KEY);
@@ -425,7 +408,6 @@ export class AccountsClient extends AccountsCommon {
   private _initUrlMatching(): void {
     this._autoLoginEnabled = true;
     this._accountsCallbacks = {};
-    // Modern apps should handle hash parsing in their router, but keeping structure for compatibility
   }
 
   public onResetPasswordLink(callback: Function): void {
