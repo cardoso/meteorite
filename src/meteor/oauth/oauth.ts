@@ -4,7 +4,7 @@ export const STORAGE_TOKEN_PREFIX = "Meteor.oauth.credentialSecret-";
 
 const credentialSecrets: Record<string, string> = {};
 
-export type LoginStyle = 'popup' | 'redirect';
+export type LoginStyle = 'popup' | 'redirect' | '';
 
 export type OAuthConfig = {
   loginStyle?: LoginStyle;

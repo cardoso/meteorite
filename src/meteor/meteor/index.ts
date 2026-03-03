@@ -28,6 +28,17 @@ export declare namespace Meteor {
   };
 
   type Error = MeteorError;
+
+  type TypedError = MeteorError & { errorType: string };
+
+  interface LoginWithExternalServiceOptions {
+    requestPermissions?: ReadonlyArray<string> | undefined;
+    requestOfflineToken?: Boolean | undefined;
+    forceApprovalPrompt?: Boolean | undefined;
+    redirectUrl?: string | undefined;
+    loginHint?: string | undefined;
+    loginStyle?: string | undefined;
+  }
 }
 
 const settings: Record<string, any> = {};
@@ -38,19 +49,22 @@ export const Meteor = withLocalStorage({
   absoluteUrl,
 
   get user() {
-    return Accounts.user;
+    return Accounts.user.bind(Accounts);
   },
-  set user(value: typeof Accounts.user) {
-    Accounts.user = value;
+  set user(value) {
+    Accounts.user = value.bind(Accounts);
   },
   get userAsync() {
     return Accounts.userAsync.bind(Accounts);
+  },
+  set userAsync(value) {
+    Accounts.userAsync = value.bind(Accounts);
   },
   get userId() {
     return Accounts.userId.bind(Accounts);
   },
   set userId(value) {
-    Accounts.userId = value;
+    Accounts.userId = value.bind(Accounts);
   },
   get users() {
     return Accounts.users;
@@ -58,24 +72,35 @@ export const Meteor = withLocalStorage({
   set users(value) {
     Accounts.users = value;
   },
-
   get loggingIn() {
     return Accounts.loggingIn.bind(Accounts);
   },
+  set loggingIn(value) {
+    Accounts.loggingIn = value.bind(Accounts);
+  },
   get loggingOut() {
     return Accounts.loggingOut.bind(Accounts);
+  },
+  set loggingOut(value) {
+    Accounts.loggingOut = value.bind(Accounts);
   },
   get logout() {
     return Accounts.logout.bind(Accounts);
   },
   set logout(value: typeof Accounts.logout) {
-    Accounts.logout = value;
+    Accounts.logout = value.bind(Accounts);
   },
   get logoutAllClients() {
     return Accounts.logoutAllClients.bind(Accounts);
   },
+  set logoutAllClients(value) {
+    Accounts.logoutAllClients = value.bind(Accounts);
+  },
   get logoutOtherClients() {
     return Accounts.logoutOtherClients.bind(Accounts);
+  },
+  set logoutOtherClients(value) {
+    Accounts.logoutOtherClients = value.bind(Accounts);
   },
 
   // --- Auth Proxies ---
@@ -83,14 +108,14 @@ export const Meteor = withLocalStorage({
     return Accounts.loginWithPassword.bind(Accounts);
   },
   set loginWithPassword(value) {
-    Accounts.loginWithPassword = value;
+    Accounts.loginWithPassword = value.bind(Accounts);
   },
 
   get loginWithToken() {
     return Accounts.loginWithToken.bind(Accounts);
   },
   set loginWithToken(value) {
-    Accounts.loginWithToken = value;
+    Accounts.loginWithToken = value.bind(Accounts);
   },
   // --------------------
 
@@ -112,7 +137,7 @@ export const Meteor = withLocalStorage({
     return this.connection.call.bind(this.connection);
   },
   set call(value: Connection['call']) {
-    this.connection.call = value;
+    this.connection.call = value.bind(this.connection);
   },
 
   get callAsync(): Connection['callAsync'] {
@@ -126,40 +151,51 @@ export const Meteor = withLocalStorage({
     return this.connection.apply.bind(this.connection);
   },
   set apply(value: Connection['apply']) {
-    this.connection.apply = value;
+    this.connection.apply = value.bind(this.connection);
   },
 
-  get applyAsync(): Connection['applyAsync'] {
+  get applyAsync() {
     return this.connection.applyAsync.bind(this.connection);
   },
-  set applyAsync(value: Connection['applyAsync']) {
-    this.connection.applyAsync = value;
+  set applyAsync(value) {
+    this.connection.applyAsync = value.bind(this.connection);
   },
 
-  get methods(): Connection['methods'] {
+  get methods() {
     return this.connection.methods.bind(this.connection);
   },
-  set methods(value: Connection['methods']) {
-    this.connection.methods = value;
+  set methods(value) {
+    this.connection.methods = value.bind(this.connection);
   },
 
-  get subscribe(): Connection['subscribe'] {
+  get subscribe() {
     return this.connection.subscribe.bind(this.connection);
   },
-  set subscribe(value: Connection['subscribe']) {
-    this.connection.subscribe = value;
+  set subscribe(value) {
+    this.connection.subscribe = value.bind(this.connection);
   },
 
-  get status(): Connection['status'] {
+  get status() {
     return this.connection.status.bind(this.connection);
   },
 
-  get reconnect(): Connection['reconnect'] {
+  set status(value) {
+    this.connection.status = value.bind(this.connection);
+  },
+
+  get reconnect() {
     return this.connection.reconnect.bind(this.connection);
   },
 
-  get disconnect(): Connection['disconnect'] {
+  set reconnect(value) {
+    this.connection.reconnect = value.bind(this.connection);
+  },
+
+  get disconnect() {
     return this.connection.disconnect.bind(this.connection);
+  },
+  set disconnect(value) {
+    this.connection.disconnect = value.bind(this.connection);
   },
   // ------------------------------
 

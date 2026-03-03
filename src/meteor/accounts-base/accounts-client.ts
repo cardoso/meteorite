@@ -1,3 +1,5 @@
+import { Meteor } from 'meteor/meteor';
+import { Tracker } from 'meteor/tracker';
 import { ReactiveVar } from 'meteor/reactive-var';
 import { DDP } from 'meteor/ddp-client';
 import { AccountsCommon, type AccountsConfigOptions } from './accounts-common.ts';
@@ -239,9 +241,29 @@ export class AccountsClient extends AccountsCommon {
 
       this.makeClientLoggedIn(result.id, result.token, result.tokenExpires);
 
-      // RESOLVES THE DEADLOCK: Removed Tracker.autorun that waited for Meteor.user()
+      // Fire hooks FIRST: This allows Rocket.Chat to kick off its REST `me` fetch
       loginCallbacks({ loginDetails: result });
-      this._setLoggingIn(false);
+
+      // Keep the UI in a "Logging In" loading state until Rocket.Chat's custom
+      // user store populates Meteor.user(). This prevents the router from kicking
+      // us back to the homepage (`/`) while the REST request is still pending.
+      Tracker.autorun((computation) => {
+        // Use globally overridden Meteor.user if it exists, otherwise fallback
+        const user = typeof Meteor.user === 'function' ? Meteor.user() : this.user();
+
+        if (user) {
+          this._setLoggingIn(false);
+          computation.stop();
+        }
+      });
+
+      // Fallback: If user data fails to fetch after 10s, release the loading lock
+      // to avoid an infinite spinner trap.
+      setTimeout(() => {
+        if (this._loggingIn.get()) {
+          this._setLoggingIn(false);
+        }
+      }, 10000);
     };
 
     if (!opts._suppressLoggingIn) {

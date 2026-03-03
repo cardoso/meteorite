@@ -1,16 +1,17 @@
 import { Meteor } from 'meteor/meteor';
 import { OAuth } from 'meteor/oauth';
+import type { Accounts } from 'meteor/accounts-base';
 
 export type Constructor<T = {}> = new (...args: any[]) => T;
 
 // Now it expects both core methods AND the ServiceConfiguration methods
 export interface OAuthAuthMixinRequirements {
-  callLoginMethod(options: any): void;
+  callLoginMethod(options: Accounts.LoginMethodOptions): void;
   _pageLoadLogin(attemptInfo: any): void;
   LoginCancelledError: new (message?: string) => Error & { numericError?: number };
-  
+
   // From ServiceConfigurationMixin
-  loginServiceConfiguration: any; 
+  loginServiceConfiguration: any;
   throwConfigError(serviceName?: string): never;
 }
 
@@ -48,13 +49,13 @@ export function OAuthAuthMixin<TBase extends Constructor<OAuthAuthMixinRequireme
 
         const checkForCredentialSecret = (clearIntervalFlag = false) => {
           const credentialSecret = OAuth._retrieveCredentialSecret(credentialToken);
-          
+
           if (!calledOnce && (credentialSecret || clearIntervalFlag)) {
             calledOnce = true;
             clearInterval(intervalId);
             this.callLoginMethod({
               methodArguments: [{ oauth: { credentialToken, credentialSecret } }],
-              userCallback: callback ? (err: any) => callback(this._convertError(err)) : () => {},
+              userCallback: callback ? (err: any) => callback(this._convertError(err)) : () => { },
             });
           } else if (clearIntervalFlag) {
             clearInterval(intervalId);
@@ -74,7 +75,7 @@ export function OAuthAuthMixin<TBase extends Constructor<OAuthAuthMixinRequireme
         }, 250);
       },
 
-      credentialRequestCompleteHandler: (callback?: (err?: Error | unknown) => void) => {
+      credentialRequestCompleteHandler: (callback?: ((err?: Error | unknown) => void) | undefined) => {
         return (credentialTokenOrError: string | Error) => {
           if (credentialTokenOrError && credentialTokenOrError instanceof Error) {
             if (callback) callback(credentialTokenOrError);
@@ -112,7 +113,7 @@ export function OAuthAuthMixin<TBase extends Constructor<OAuthAuthMixinRequireme
         methodArguments,
         userCallback: (err: any) => {
           const convertedErr = this._convertError(err);
-          
+
           this._pageLoadLogin({
             type: loginService,
             allowed: !convertedErr,

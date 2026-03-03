@@ -20,7 +20,7 @@ export class ConfigError extends Error {
   constructor(serviceName?: string, isConfigured: boolean = true) {
     super();
     this.name = 'ServiceConfiguration.ConfigError';
-    
+
     if (!isConfigured) {
       this.message = 'Login service configuration not yet loaded';
     } else if (serviceName) {
@@ -42,7 +42,7 @@ export const ServiceConfiguration = {
   ConfigError,
   get configurations(): Mongo.Collection<Configuration> {
     if (!sharedCollection) {
-      // Fallback: If accessed before the Accounts Mixin initializes it, 
+      // Fallback: If accessed before the Accounts Mixin initializes it,
       // instantiate without a specific connection (uses the default DDP connection).
       sharedCollection = new Mongo.Collection<Configuration>(
         'meteor_accounts_loginServiceConfiguration',
@@ -58,8 +58,10 @@ export const ServiceConfiguration = {
  */
 export function ServiceConfigurationMixin<TBase extends Constructor<ServiceConfigurationRequirements>>(Base: TBase) {
   return class extends Base {
-    
-    // LAZY INITIALIZATION: Prevents accessing `this.connection` synchronously 
+
+    ConfigError = ConfigError; // Expose ConfigError on the class for static access
+
+    // LAZY INITIALIZATION: Prevents accessing `this.connection` synchronously
     // during class instantiation, avoiding ESM Temporal Dead Zone crashes.
     public get loginServiceConfiguration(): Mongo.Collection<Configuration> {
       if (!sharedCollection) {
