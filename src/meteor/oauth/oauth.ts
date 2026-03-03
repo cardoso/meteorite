@@ -8,6 +8,7 @@ export type LoginStyle = 'popup' | 'redirect';
 
 export type OAuthConfig = {
   loginStyle?: LoginStyle;
+  [key: string]: unknown;
 };
 
 export type PopupDimensions = {
@@ -36,7 +37,7 @@ export type RedirectData = {
 export const _loginStyle = (
   _service: string,
   config: OAuthConfig,
-  options?: { loginStyle?: LoginStyle }
+  options?: Record<string, any>
 ): LoginStyle => {
   let loginStyle = options?.loginStyle || config.loginStyle || 'popup';
 
@@ -202,7 +203,7 @@ export const handleCredentialSecret = (credentialToken: string, secret: string):
  */
 export const _retrieveCredentialSecret = (credentialToken: string): string | null => {
   let secret = credentialSecrets[credentialToken];
-  
+
   if (!secret) {
     const localStorageKey = STORAGE_TOKEN_PREFIX + credentialToken;
     secret = window.localStorage.getItem(localStorageKey) || '';
@@ -210,7 +211,7 @@ export const _retrieveCredentialSecret = (credentialToken: string): string | nul
   } else {
     delete credentialSecrets[credentialToken];
   }
-  
+
   return secret || null;
 };
 
@@ -255,7 +256,7 @@ export const _redirectUri = (
 ): string => {
   // Rely on the standard browser origin unless a specific root URL is provided
   const baseUrl = absoluteUrlOptions?.rootUrl || window.location.origin;
-  
+
   // Construct the standardized Meteor OAuth callback path
   const url = new URL(`/_oauth/${serviceName}`, baseUrl);
 

@@ -31,19 +31,39 @@ export class ConfigError extends Error {
   }
 }
 
+// Module-scoped singleton to bridge the Mixin and the legacy static API
+let sharedCollection: Mongo.Collection<Configuration> | undefined;
+
+/**
+ * Legacy API Surface Export
+ * Preserves compatibility for code using `ServiceConfiguration.configurations.findOne(...)`
+ */
+export const ServiceConfiguration = {
+  ConfigError,
+  get configurations(): Mongo.Collection<Configuration> {
+    if (!sharedCollection) {
+      // Fallback: If accessed before the Accounts Mixin initializes it, 
+      // instantiate without a specific connection (uses the default DDP connection).
+      sharedCollection = new Mongo.Collection<Configuration>(
+        'meteor_accounts_loginServiceConfiguration',
+        { _preventAutopublish: true }
+      );
+    }
+    return sharedCollection;
+  }
+};
+
 /**
  * The Service Configuration Mixin
  */
 export function ServiceConfigurationMixin<TBase extends Constructor<ServiceConfigurationRequirements>>(Base: TBase) {
   return class extends Base {
     
-    private _loginServiceConfiguration?: Mongo.Collection<Configuration>;
-
     // LAZY INITIALIZATION: Prevents accessing `this.connection` synchronously 
     // during class instantiation, avoiding ESM Temporal Dead Zone crashes.
     public get loginServiceConfiguration(): Mongo.Collection<Configuration> {
-      if (!this._loginServiceConfiguration) {
-        this._loginServiceConfiguration = new Mongo.Collection<Configuration>(
+      if (!sharedCollection) {
+        sharedCollection = new Mongo.Collection<Configuration>(
           'meteor_accounts_loginServiceConfiguration',
           {
             _preventAutopublish: true,
@@ -51,7 +71,7 @@ export function ServiceConfigurationMixin<TBase extends Constructor<ServiceConfi
           }
         );
       }
-      return this._loginServiceConfiguration;
+      return sharedCollection;
     }
 
     /**

@@ -177,14 +177,14 @@ export class Collection<TDoc extends Document = Document, TOutDoc extends TDoc =
     });
   }
 
-  findOne(selector: Selector = {}, options: CursorOptions<TDoc, TOutDoc> = {}): TOutDoc | undefined {
+  findOne(selector: Selector = {}, options: CursorOptions<TDoc, TOutDoc> = {}): TOutDoc | undefined | null {
     return this._localCollection.findOne(selector, {
       transform: this._transform,
       ...options
     });
   }
 
-  async findOneAsync(selector: Selector = {}, options: any = {}): Promise<TOutDoc | undefined> {
+  async findOneAsync(selector: Selector = {}, options: any = {}): Promise<TOutDoc | undefined | null> {
     return this.findOne(selector, options);
   }
 

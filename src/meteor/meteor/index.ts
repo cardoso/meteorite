@@ -1,12 +1,14 @@
 import { MeteorError } from './errors';
 import { EnvironmentVariable, bindEnvironment } from './dynamics';
-import { defer, setTimeoutWrapped, setIntervalWrapped, clearTimeoutWrapped, clearIntervalWrapped } from './timers';
+import { defer, setTimeout, setInterval, clearTimeout, clearInterval } from './timers';
 import { _debug } from './debug';
 import { AsynchronousQueue, SynchronousQueue } from './queues';
 import { startup } from './startup';
-import type { Connection } from 'meteor/ddp-client';
+import { Connection } from 'meteor/ddp-client';
 import { Accounts } from 'meteor/accounts-base';
 import { withLocalStorage } from 'meteor/localstorage';
+import { _ensure, _get } from './helpers';
+import { absoluteUrl } from './url';
 
 export const refresh = () => { };
 let _connection: Connection | null = null;
@@ -28,24 +30,50 @@ export declare namespace Meteor {
   type Error = MeteorError;
 }
 
+const settings: Record<string, any> = {};
+
 export const Meteor = withLocalStorage({
   // Hardcoded environment flags for standard client builds
+  settings,
+  absoluteUrl,
 
+  get user() {
+    return Accounts.user;
+  },
+  set user(value: typeof Accounts.user) {
+    Accounts.user = value;
+  },
+  get userAsync() {
+    return Accounts.userAsync.bind(Accounts);
+  },
+  get userId() {
+    return Accounts.userId.bind(Accounts);
+  },
+  set userId(value: typeof Accounts.userId) {
+    Accounts.userId = value;
+  },
 
-  user: Accounts.user.bind(Accounts),
-  userAsync: Accounts.userAsync.bind(Accounts),
-  userId: Accounts.userId.bind(Accounts),
-  loggingIn: Accounts.loggingIn.bind(Accounts),
-  loggingOut: Accounts.loggingOut.bind(Accounts),
-  logout: Accounts.logout.bind(Accounts),
-  logoutAllClients: Accounts.logoutAllClients.bind(Accounts),
-  logoutOtherClients: Accounts.logoutOtherClients.bind(Accounts),
+  get loggingIn() {
+    return Accounts.loggingIn.bind(Accounts);
+  },
+  get loggingOut() {
+    return Accounts.loggingOut.bind(Accounts);
+  },
+  get logout() {
+    return Accounts.logout.bind(Accounts);
+  },
+  get logoutAllClients() {
+    return Accounts.logoutAllClients.bind(Accounts);
+  },
+  get logoutOtherClients() {
+    return Accounts.logoutOtherClients.bind(Accounts);
+  },
   // loginWithPassword: Accounts.loginWithPassword.bind(Accounts),
   EnvironmentVariable,
   bindEnvironment,
   get connection() {
     if (!_connection) {
-      throw new Error('Meteor.connection has not been set yet');
+      _connection = new Connection('/', { retry: true });
     }
     return _connection;
   },
@@ -55,12 +83,15 @@ export const Meteor = withLocalStorage({
   get call(): Connection['call'] {
     return this.connection.call.bind(this.connection);
   },
+  set call(value: Connection['call']) {
+    this.connection.call = value;
+  },
   Error,
   defer,
-  setTimeout: setTimeoutWrapped,
-  setInterval: setIntervalWrapped,
-  clearTimeout: clearTimeoutWrapped,
-  clearInterval: clearIntervalWrapped,
+  setTimeout,
+  setInterval,
+  clearTimeout,
+  clearInterval,
 
   _AsynchronousQueue: AsynchronousQueue,
   _SynchronousQueue: SynchronousQueue,
@@ -70,21 +101,8 @@ export const Meteor = withLocalStorage({
   refresh,
 
   // Minimal utility polyfills that some legacy packages still look for
-  _get: (obj: any, ...args: string[]) => {
-    for (let i = 0; i < args.length; i++) {
-      if (!obj || !(args[i] in obj)) return undefined;
-      obj = obj[args[i]];
-    }
-    return obj;
-  },
-  _ensure: (obj: any, ...args: string[]) => {
-    for (let i = 0; i < args.length; i++) {
-      const key = args[i];
-      if (!(key in obj)) obj[key] = {};
-      obj = obj[key];
-    }
-    return obj;
-  },
+  _get,
+  _ensure,
 
   // Stubs for safely removing nodejs/server specific features
   _noYieldsAllowed: (f: Function) => f(),

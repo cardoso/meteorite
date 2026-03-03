@@ -91,6 +91,19 @@ export class AccountsClient extends AccountsCommon {
     return this._loginFuncs[funcName].apply(this, funcArgs);
   }
 
+  /**
+   * Same as `callLoginFunction` but accepts an arguments array which contains 
+   * all arguments for the login function.
+   * * @param funcName The name of the login function you want to call.
+   * @param funcArgs The arguments array for the login function.
+   */
+  public applyLoginFunction(funcName: string, funcArgs: any[]): any {
+    if (!this._loginFuncs[funcName]) {
+      throw new Error(`${funcName} was not defined`);
+    }
+    return this._loginFuncs[funcName].apply(this, funcArgs);
+  }
+
   public logout(callback?: (err?: Error) => void): void {
     this._loggingOut.set(true);
 
