@@ -40,14 +40,36 @@ export declare namespace Meteor {
   type EnvironmentVariable<T = any> = import('./dynamics').EnvironmentVariable<T>;
 }
 
-const settings: Record<string, any> = {};
+const settings: Record<string, any> = {
+  public: {},
+};
+
+// @ts-expect-error
+const NODE_ENV = typeof process !== 'undefined' ? process.env.NODE_ENV : 'development';
 
 export const Meteor = withAccounts(withLocalStorage({
   // Hardcoded environment flags for standard client builds
   settings,
   absoluteUrl,
   // --------------------
-
+isProduction: NODE_ENV === "production",
+  isDevelopment: NODE_ENV !== "production",
+  
+  // Demeteorized frontend is ALWAYS client, NEVER server or cordova
+  isClient: true,
+  isServer: false,
+  isCordova: false,
+  
+  // Modern browser environment is assumed
+  isModern: true,
+  
+  // Test environments
+  isTest: NODE_ENV === "test",
+  isAppTest: false,
+  isPackageTest: false,
+  
+  // Dummy settings to maintain API surface
+  release: "demeteorized",
   EnvironmentVariable,
   bindEnvironment,
 

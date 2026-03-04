@@ -1,4 +1,4 @@
-import { Meteor } from './environment.ts';
+import { Meteor } from 'meteor/meteor';
 
 export function setTimeout(func: Function, delay: number): number {
   return globalThis.setTimeout(func as TimerHandler, delay);
