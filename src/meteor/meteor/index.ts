@@ -18,10 +18,6 @@ export const isCordova = false;
 
 export const Error = MeteorError;
 
-export type User = {
-  _id: string;
-}
-
 export declare namespace Meteor {
   type User = {
     _id: string;
