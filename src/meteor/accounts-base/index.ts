@@ -37,3 +37,12 @@ export declare namespace Accounts {
 
 // 2. Instantiate the singleton
 export const Accounts = new AppAccountsClient();
+
+// 3. Adds all methods to another object, for backwards compatibility and ease of use.
+export const withAccounts = <T extends object>(obj: T): T & typeof Accounts => {
+  Object.keys(Accounts).forEach((key) => {
+    // @ts-ignore - This is a mixin pattern, so we know the types are correct
+    obj[key] = Accounts[key];
+  });
+  return obj as T & typeof Accounts;
+};

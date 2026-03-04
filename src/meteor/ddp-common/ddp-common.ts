@@ -272,39 +272,44 @@ function randomToken(): string {
   return Random.hexString(20);
 }
 
+export type RandomSeed = string | (() => string);
+
 export type RandomStreamOptions = {
-  seed?: any | any[];
+  seed?: RandomSeed | RandomSeed[] | undefined;
 };
 
 export class RandomStream {
-  public seed: any[];
+  public seed: string[];
   public sequences: Record<string, any> = Object.create(null);
 
   constructor(options: RandomStreamOptions = {}) {
-    this.seed = [].concat(options.seed || randomToken());
+    const { seed } = options;
+    const rawSeedArray: RandomSeed[] = Array.isArray(seed)
+      ? seed
+      : [seed || randomToken()];
+
+    this.seed = rawSeedArray.map((value) =>
+      typeof value === "function" ? value() : value
+    );
   }
 
   public _sequence(name: string): any {
     let sequence = this.sequences[name] || null;
     if (sequence === null) {
       const sequenceSeed = this.seed.concat(name);
-      for (let i = 0; i < sequenceSeed.length; i++) {
-        if (typeof sequenceSeed[i] === "function") {
-          sequenceSeed[i] = sequenceSeed[i]();
-        }
-      }
+
       // Assuming Random.createWithSeeds exists on modern Random import
-      this.sequences[name] = sequence = (Random as any).createWithSeeds(...sequenceSeed);
+      this.sequences[name] = sequence = Random.createWithSeeds(...sequenceSeed);
     }
     return sequence;
   }
 
-  public static get(scope: any, name?: string): any {
+  public static get(scope?: { randomStream?: RandomStream, randomSeed?: string | string[] | undefined }, name?: string): any {
     if (!name) {
       name = "default";
     }
     if (!scope) {
-      return (Random as any).insecure || Random;
+      return Random.insecure || Random;
     }
     
     let randomStream = scope.randomStream;

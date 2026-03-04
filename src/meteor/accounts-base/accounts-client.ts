@@ -189,7 +189,7 @@ export class AccountsClient extends AccountsCommon {
           this._reconnectStopper.stop();
         }
 
-        this._reconnectStopper = DDP.onReconnect((conn: any) => {
+        this._reconnectStopper = DDP.onReconnect((conn) => {
           if (conn !== this.connection) return;
 
           reconnected = true;

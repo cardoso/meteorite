@@ -32,6 +32,8 @@ export type OutstandingMethodBlock = {
   methods: MethodInvoker[];
 };
 
+export type Subscription = { ready?: boolean | undefined, readyDeps: Tracker.Dependency, readyCallback?: (() => void) | undefined, errorCallback?: ((error: any) => void) | undefined, stopCallback?: ((error: any) => void) | undefined, connection: BaseConnection, name: string, params: any[], inactive: boolean, id: string, stop: () => void, remove: () => void };
+
 export class BaseConnection {
   public options: ConnectionOptions;
   public onReconnect: (() => void) | null | undefined;
@@ -61,7 +63,7 @@ export class BaseConnection {
   public _bufferedWritesFlushHandle: ReturnType<typeof setTimeout> | null;
   public _bufferedWritesInterval: number;
   public _bufferedWritesMaxAge: number;
-  public _subscriptions: Record<string, any>;
+  public _subscriptions: Record<string, Subscription>;
 
   protected _userId: string | null;
   protected _userIdDeps: any;

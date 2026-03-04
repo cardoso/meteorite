@@ -1,27 +1,49 @@
 import { DDPCommon } from 'meteor/ddp-common';
 import { Meteor } from 'meteor/meteor';
 import { Hook } from 'meteor/callback-hook';
+import type { BaseConnection, ConnectionOptions } from './base-connection.ts';
+import { Connection } from './livedata-connection.ts';
 
 // Export an array to track connections for _allSubscriptionsReady
-export const allConnections: any[] = [];
+export const allConnections: BaseConnection[] = [];
 
-export const DDP: any = {
-  ConnectionError: class ConnectionError extends Error {
-    constructor(message: string) {
-      super(message);
-      this.name = 'DDP.ConnectionError';
-    }
-  },
-  ForcedReconnectError: class ForcedReconnectError extends Error {
-    constructor(message?: string) {
-      super(message);
-      this.name = 'DDP.ForcedReconnectError';
-    }
-  },
-  _reconnectHook: new Hook({ bindEnvironment: false }),
-  onReconnect: (callback: any) => DDP._reconnectHook.register(callback),
-  _allSubscriptionsReady: () => allConnections.every((conn) => Object.values(conn._subscriptions).every((sub: any) => sub.ready)),
-  
+class ConnectionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'DDP.ConnectionError';
+  }
+}
+
+class ForcedReconnectError extends Error {
+  constructor(message?: string) {
+    super(message);
+    this.name = 'DDP.ForcedReconnectError';
+  }
+}
+
+const _reconnectHook = new Hook({ bindEnvironment: false });
+
+const onReconnect = (callback: (conn: BaseConnection) => void) => {
+  return DDP._reconnectHook.register(callback);
+};
+
+const _allSubscriptionsReady = () => allConnections.every((conn) => Object.values(conn._subscriptions).every((sub) => sub.ready));
+
+const connect = (url: string | object, options?: ConnectionOptions) => {
+  const ret = new Connection(url, options);
+  allConnections.push(ret); // hack. see below.
+  return ret;
+}
+
+export const DDP = {
+  ConnectionError,
+  ForcedReconnectError,
+  _reconnectHook,
+  onReconnect,
+  _allSubscriptionsReady,
+  _CurrentMethodInvocation: null! as Meteor.EnvironmentVariable,
+  connect,
+
   randomStream: (name?: string) => {
     const scope = DDP._CurrentMethodInvocation?.get();
     return DDPCommon.RandomStream.get(scope, name);
