@@ -20,19 +20,27 @@ export class OrderedDict<K = any, V = any> {
   _size: number;
   _stringify: Stringifier<K>;
 
-  constructor(...args: any[]) {
+  constructor();
+  constructor(stringify: Stringifier<K>);
+  constructor(...entries: Array<[K, V]>);
+  constructor(stringify: Stringifier<K>, ...entries: Array<[K, V]>);
+  constructor(...args: [Stringifier<K>, ...Array<[K, V]>] | Array<[K, V]> | []) {
     this._dict = Object.create(null);
     this._first = null;
     this._last = null;
     this._size = 0;
+    let entries: Array<[K, V]>;
 
     if (typeof args[0] === 'function') {
-      this._stringify = args.shift() as Stringifier<K>;
+      const [stringify, ...rest] = args as [Stringifier<K>, ...Array<[K, V]>];
+      this._stringify = stringify;
+      entries = rest;
     } else {
       this._stringify = (x: K) => x;
+      entries = args as Array<[K, V]>;
     }
 
-    args.forEach((kv: [K, V]) => this.putBefore(kv[0], kv[1], null));
+    entries.forEach((kv) => this.putBefore(kv[0], kv[1], null));
   }
 
   // Prefix keys with a space to avoid collision with standard Object properties
